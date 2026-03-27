@@ -3,6 +3,8 @@ import type { AuthToken } from "../config/schema.js";
 
 export async function storeToken(opts: {
 	apiToken: string;
+	refreshToken?: string;
+	expiresIn?: number;
 	email?: string;
 	accountId?: string;
 	accountName?: string;

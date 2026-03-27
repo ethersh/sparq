@@ -2,9 +2,9 @@ import { input, confirm } from "@inquirer/prompts";
 import chalk from "chalk";
 import yoctoSpinner from "yocto-spinner";
 import { isConfigured, getProjectConfig, saveProjectConfig } from "../config/project.js";
-import { ensureAuth } from "../auth/ensure.js";
+import { ensureAuth, ensureTunnelAuth } from "../auth/ensure.js";
 import { listZones, extractZoneFromHostname } from "../cf/zones.js";
-import { getDnsRecord, createDnsRecord, updateDnsRecord } from "../cf/dns.js";
+import { routeTunnelDns } from "../cf/tunnel-routes.js";
 import { generateCloudflaredConfig } from "../tunnel/config-gen.js";
 import { isTunnelRunning, stopTunnel, startTunnel } from "../tunnel/daemon.js";
 import { registerTunnel } from "../config/global.js";
@@ -33,17 +33,13 @@ export async function addCommand(): Promise<void> {
 	}
 
 	const auth = await ensureAuth();
-	if (!auth.account_id) {
-		printError("Could not determine account ID");
-		return;
-	}
-
+	const cert = await ensureTunnelAuth();
 	const zones = await listZones();
 
-	console.log(chalk.bold("  Add route\n"));
+	console.log();
 
 	const portStr = await input({
-		message: "Port to forward",
+		message: "What port is your app running on?",
 		validate: (val) => {
 			const n = parseInt(val, 10);
 			if (isNaN(n) || n < 1 || n > 65535) return "Enter a valid port (1-65535)";
@@ -58,7 +54,7 @@ export async function addCommand(): Promise<void> {
 	if (config.routes.some((r) => r.hostname === hostname)) {
 		printWarning("This hostname is already configured.");
 		const update = await confirm({
-			message: "Update port for this route?",
+			message: "Update port?",
 			default: false,
 		});
 		if (update) {
@@ -72,34 +68,25 @@ export async function addCommand(): Promise<void> {
 		config.routes.push({ hostname, port, protocol: "http" });
 	}
 
-	// Create/update DNS
+	// Route DNS via tunnel-specific endpoint
 	const zone = extractZoneFromHostname(hostname, zones);
 	if (zone) {
 		const dnsSpinner = yoctoSpinner({
-			text: `Setting up DNS for ${hostname}...`,
+			text: `DNS: ${hostname}...`,
 		}).start();
 
 		try {
-			const existing = await getDnsRecord(zone.id, hostname);
-			if (existing) {
-				printWarning(`DNS record exists: ${hostname} → ${existing.content}`);
-				const overwrite = await confirm({
-					message: "Overwrite?",
-					default: false,
-				});
-				if (overwrite) {
-					await updateDnsRecord(zone.id, existing.id, hostname, config.tunnel_id);
-					dnsSpinner.success(`DNS updated: ${hostname}`);
-				} else {
-					dnsSpinner.stop();
-					return;
-				}
-			} else {
-				await createDnsRecord(zone.id, hostname, config.tunnel_id);
-				dnsSpinner.success(`DNS: ${hostname} → tunnel`);
-			}
+			await routeTunnelDns(
+				cert.apiToken,
+				zone.id,
+				config.tunnel_id,
+				hostname,
+				true,
+			);
+			dnsSpinner.success(`DNS: ${hostname} → tunnel`);
 		} catch (err: any) {
-			dnsSpinner.error(`Failed: ${err.message}`);
+			dnsSpinner.error(`DNS failed: ${hostname}`);
+			printError(err.response?.data?.errors?.[0]?.message ?? err.message);
 			return;
 		}
 	}
@@ -114,7 +101,6 @@ export async function addCommand(): Promise<void> {
 	});
 	await generateCloudflaredConfig(config);
 
-	// Restart if running
 	if (await isTunnelRunning()) {
 		await stopTunnel();
 		const pid = await startTunnel();

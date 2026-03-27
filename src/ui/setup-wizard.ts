@@ -1,11 +1,14 @@
 import { input, confirm } from "@inquirer/prompts";
+import { randomBytes } from "node:crypto";
 import chalk from "chalk";
 import yoctoSpinner from "yocto-spinner";
-import { ensureAuth } from "../auth/ensure.js";
+import { ensureAuth, ensureTunnelAuth } from "../auth/ensure.js";
 import { ensureCloudflared } from "../deps/ensure.js";
 import { listZones, extractZoneFromHostname } from "../cf/zones.js";
-import { getDnsRecord, createDnsRecord, updateDnsRecord } from "../cf/dns.js";
-import { createTunnel } from "../cf/tunnels.js";
+import {
+	routeTunnelDns,
+	createTunnelWithCert,
+} from "../cf/tunnel-routes.js";
 import { generateCloudflaredConfig } from "../tunnel/config-gen.js";
 import { startTunnel } from "../tunnel/daemon.js";
 import { saveProjectConfig, saveCredentials } from "../config/project.js";
@@ -20,7 +23,7 @@ import {
 	printError,
 	printDim,
 } from "./format.js";
-import type { Route, ProjectConfig } from "../config/schema.js";
+import type { Route, ProjectConfig, TunnelCredentials } from "../config/schema.js";
 import { basename } from "node:path";
 
 export async function runSetupWizard(): Promise<void> {
@@ -36,18 +39,21 @@ export async function runSetupWizard(): Promise<void> {
 		chalk.cyan,
 	);
 
-	// Step 1: Ensure dependencies
+	// Step 1: Ensure cloudflared
 	console.log();
 	await ensureCloudflared();
 
-	// Step 2: Authenticate
+	// Step 2: OAuth login (for zones + user info)
 	const auth = await ensureAuth();
 	if (!auth.account_id) {
 		printError("Could not determine account ID");
 		process.exit(1);
 	}
 
-	// Step 3: Fetch zones
+	// Step 3: cloudflared cert.pem (for tunnel creation + DNS routing)
+	const cert = await ensureTunnelAuth();
+
+	// Step 4: Fetch zones (using OAuth token)
 	console.log();
 	const zonesSpinner = yoctoSpinner({
 		text: "Fetching your domains...",
@@ -70,7 +76,7 @@ export async function runSetupWizard(): Promise<void> {
 		process.exit(1);
 	}
 
-	// Step 4: Collect routes
+	// Step 5: Collect routes
 	const routes: Route[] = [];
 	let addMore = true;
 
@@ -90,25 +96,6 @@ export async function runSetupWizard(): Promise<void> {
 
 		const hostname = await promptDomainWithAutocomplete(zones);
 
-		// Check if DNS record already exists
-		const zone = extractZoneFromHostname(hostname, zones);
-		if (zone) {
-			const existing = await getDnsRecord(zone.id, hostname);
-			if (existing) {
-				printWarning(
-					`DNS record exists: ${hostname} → ${existing.content}`,
-				);
-				const overwrite = await confirm({
-					message: "Overwrite existing record?",
-					default: false,
-				});
-				if (!overwrite) {
-					printDim("Skipped.");
-					continue;
-				}
-			}
-		}
-
 		routes.push({ hostname, port, protocol: "http" });
 		printSuccess(`${hostname} → localhost:${port}`);
 
@@ -123,7 +110,7 @@ export async function runSetupWizard(): Promise<void> {
 		process.exit(1);
 	}
 
-	// Step 5: Create tunnel
+	// Step 6: Create tunnel (using cert.pem token)
 	console.log();
 	const dirName = basename(process.cwd())
 		.toLowerCase()
@@ -131,17 +118,20 @@ export async function runSetupWizard(): Promise<void> {
 		.replace(/-+/g, "-")
 		.replace(/^-|-$/g, "");
 	const tunnelName = `sparq-${dirName || "tunnel"}`;
+	const tunnelSecret = randomBytes(32).toString("base64");
 
 	const tunnelSpinner = yoctoSpinner({
 		text: `Creating tunnel "${tunnelName}"...`,
 	}).start();
 
 	let tunnel;
-	let credentials;
 	try {
-		const result = await createTunnel(auth.account_id, tunnelName);
-		tunnel = result.tunnel;
-		credentials = result.credentials;
+		tunnel = await createTunnelWithCert(
+			cert.apiToken,
+			cert.accountID,
+			tunnelName,
+			tunnelSecret,
+		);
 		tunnelSpinner.success(`Tunnel "${tunnelName}" created`);
 	} catch (err: any) {
 		tunnelSpinner.error("Failed to create tunnel");
@@ -149,7 +139,13 @@ export async function runSetupWizard(): Promise<void> {
 		process.exit(1);
 	}
 
-	// Step 6: Create DNS records
+	const credentials: TunnelCredentials = {
+		AccountTag: cert.accountID,
+		TunnelSecret: tunnelSecret,
+		TunnelID: tunnel.id,
+	};
+
+	// Step 7: Route DNS (using cert.pem token + tunnel-specific endpoint)
 	for (const route of routes) {
 		const zone = extractZoneFromHostname(route.hostname, zones);
 		if (!zone) {
@@ -162,29 +158,25 @@ export async function runSetupWizard(): Promise<void> {
 		}).start();
 
 		try {
-			const existing = await getDnsRecord(zone.id, route.hostname);
-			if (existing) {
-				await updateDnsRecord(
-					zone.id,
-					existing.id,
-					route.hostname,
-					tunnel.id,
-				);
-			} else {
-				await createDnsRecord(zone.id, route.hostname, tunnel.id);
-			}
+			await routeTunnelDns(
+				cert.apiToken,
+				zone.id,
+				tunnel.id,
+				route.hostname,
+				true, // overwrite if exists
+			);
 			dnsSpinner.success(`DNS: ${route.hostname} → tunnel`);
 		} catch (err: any) {
 			dnsSpinner.error(`DNS failed: ${route.hostname}`);
-			printError(err.message);
+			printError(err.response?.data?.errors?.[0]?.message ?? err.message);
 		}
 	}
 
-	// Step 7: Save config
+	// Step 8: Save config
 	const config: ProjectConfig = {
 		tunnel_id: tunnel.id,
 		tunnel_name: tunnelName,
-		account_id: auth.account_id,
+		account_id: cert.accountID,
 		routes,
 	};
 
@@ -197,7 +189,7 @@ export async function runSetupWizard(): Promise<void> {
 		routes,
 	});
 
-	// Step 8: Generate cloudflared config and start
+	// Step 9: Start tunnel
 	await generateCloudflaredConfig(config);
 
 	const pidSpinner = yoctoSpinner({ text: "Starting tunnel..." }).start();
@@ -210,7 +202,6 @@ export async function runSetupWizard(): Promise<void> {
 		process.exit(1);
 	}
 
-	// Step 9: Summary
 	console.log();
 	printRoutes(routes, true);
 	printDim("Run `sparq status` to check, `sparq down` to stop.");

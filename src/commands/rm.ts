@@ -1,9 +1,9 @@
 import { confirm } from "@inquirer/prompts";
 import yoctoSpinner from "yocto-spinner";
 import { isConfigured, getProjectConfig, saveProjectConfig } from "../config/project.js";
-import { ensureAuth } from "../auth/ensure.js";
+import { ensureAuth, ensureTunnelAuth } from "../auth/ensure.js";
 import { listZones, extractZoneFromHostname } from "../cf/zones.js";
-import { getDnsRecord, deleteDnsRecord } from "../cf/dns.js";
+import { getDnsRecordWithToken, deleteDnsRecordWithToken } from "../cf/tunnel-routes.js";
 import { generateCloudflaredConfig } from "../tunnel/config-gen.js";
 import { isTunnelRunning, stopTunnel, startTunnel } from "../tunnel/daemon.js";
 import { registerTunnel } from "../config/global.js";
@@ -48,8 +48,9 @@ export async function rmCommand(hostname: string): Promise<void> {
 	if (!shouldDelete) return;
 
 	const auth = await ensureAuth();
+	const cert = await ensureTunnelAuth();
 
-	// Delete DNS record
+	// Delete DNS record using cert.pem token
 	const zones = await listZones();
 	const zone = extractZoneFromHostname(hostname, zones);
 	if (zone) {
@@ -57,9 +58,9 @@ export async function rmCommand(hostname: string): Promise<void> {
 			text: `Deleting DNS record for ${hostname}...`,
 		}).start();
 		try {
-			const record = await getDnsRecord(zone.id, hostname);
+			const record = await getDnsRecordWithToken(cert.apiToken, zone.id, hostname);
 			if (record) {
-				await deleteDnsRecord(zone.id, record.id);
+				await deleteDnsRecordWithToken(cert.apiToken, zone.id, record.id);
 				dnsSpinner.success(`DNS record deleted: ${hostname}`);
 			} else {
 				dnsSpinner.success("No DNS record found (already clean)");

@@ -1,191 +1,145 @@
+import { execSync } from "node:child_process";
 import chalk from "chalk";
 import axios from "axios";
-import { input } from "@inquirer/prompts";
-import open from "open";
 import yoctoSpinner from "yocto-spinner";
 import { storeToken, getStoredToken } from "./store.js";
-import { certExists, readCert } from "./cert.js";
+import { certExists, readCert, getCertPath, type OriginCert } from "./cert.js";
 import { ensureCloudflared } from "../deps/ensure.js";
+import { runOAuthFlow } from "./oauth.js";
 import type { AuthToken } from "../config/schema.js";
 
 const CF_API = "https://api.cloudflare.com/client/v4";
-const CF_TOKEN_PAGE = "https://dash.cloudflare.com/profile/api-tokens";
 
 /**
- * Verify a token by trying to list zones and tunnels.
- * We don't use /user because cert.pem tokens lack that scope.
- * Instead we verify against the endpoints we actually need.
+ * Auth has two parts:
+ *
+ * 1. OAuth (wrangler-style) — for user info + zone listing
+ *    Stored in ~/.sparq/auth.json
+ *
+ * 2. cloudflared cert.pem — for tunnel creation + DNS routing
+ *    Lives at ~/.cloudflared/cert.pem
+ *
+ * Both are browser-based, both are one-time.
  */
-async function verifyToken(token: string): Promise<{
-	email?: string;
-	accountId: string;
-	accountName?: string;
-}> {
+
+// ─── OAuth (zones + user info) ───
+
+async function verifyOAuthToken(
+	token: string,
+): Promise<{ email: string; accountId: string; accountName: string }> {
 	const headers = { Authorization: `Bearer ${token}` };
 
-	// Try /user for email (optional — cert.pem tokens will 403 here)
-	let email: string | undefined;
-	try {
-		const userRes = await axios.get(`${CF_API}/user`, { headers });
-		email = userRes.data.result?.email;
-	} catch {
-		// cert.pem tokens don't have /user access — that's fine
-	}
+	const userRes = await axios.get(`${CF_API}/user`, { headers });
+	const email: string = userRes.data.result.email;
 
-	// Try /accounts to get account info
-	let accountId: string | undefined;
-	let accountName: string | undefined;
-	try {
-		const accRes = await axios.get(`${CF_API}/accounts`, {
-			headers,
-			params: { per_page: 1 },
-		});
-		const accounts = accRes.data.result;
-		if (accounts?.length > 0) {
-			accountId = accounts[0].id;
-			accountName = accounts[0].name;
-		}
-	} catch {
-		// cert.pem tokens might not have /accounts access either
-	}
-
-	// Try /zones — most tokens can at least do this
-	if (!accountId) {
-		try {
-			const zonesRes = await axios.get(`${CF_API}/zones`, {
-				headers,
-				params: { per_page: 1, status: "active" },
-			});
-			const zones = zonesRes.data.result;
-			if (zones?.length > 0) {
-				accountId = zones[0].account?.id;
-				accountName = zones[0].account?.name;
-			}
-		} catch {
-			// Can't even list zones
-		}
-	}
-
-	if (!accountId) {
-		throw new Error("Token cannot access any Cloudflare resources.");
-	}
-
-	// Verify tunnel access — this is what we actually need
-	try {
-		await axios.get(`${CF_API}/accounts/${accountId}/cfd_tunnel`, {
-			headers,
-			params: { per_page: 1, is_deleted: false },
-		});
-	} catch {
-		throw new Error(
-			"Token cannot manage tunnels. Ensure it has 'Cloudflare Tunnel: Edit' permission.",
-		);
-	}
-
-	return { email, accountId, accountName };
-}
-
-async function promptForApiToken(): Promise<string> {
-	console.log(
-		chalk.dim("  Opening Cloudflare dashboard to create an API token...\n"),
-	);
-	console.log(chalk.dim("  Create a Custom Token with these permissions:\n"));
-	console.log(
-		`    ${chalk.cyan("Account")} ${chalk.dim("→")} Cloudflare Tunnel ${chalk.dim("→")} Edit`,
-	);
-	console.log(
-		`    ${chalk.cyan("Zone")}    ${chalk.dim("→")} Zone ${chalk.dim("→")} Read`,
-	);
-	console.log(
-		`    ${chalk.cyan("Zone")}    ${chalk.dim("→")} DNS ${chalk.dim("→")} Edit`,
-	);
-	console.log();
-
-	await open(CF_TOKEN_PAGE).catch(() => {
-		console.log(chalk.dim(`  Open manually: ${CF_TOKEN_PAGE}\n`));
+	const accRes = await axios.get(`${CF_API}/accounts`, {
+		headers,
+		params: { per_page: 1 },
 	});
+	const accounts = accRes.data.result;
+	if (!accounts?.length) {
+		throw new Error("No Cloudflare accounts found.");
+	}
 
-	const token = await input({
-		message: "Paste your API token",
-		validate: (val) => {
-			if (!val.trim()) return "Token is required";
-			return true;
-		},
-	});
-
-	return token.trim();
+	return {
+		email,
+		accountId: accounts[0].id,
+		accountName: accounts[0].name,
+	};
 }
 
 export async function ensureAuth(): Promise<AuthToken> {
-	// 1. Check stored token
+	// Check stored OAuth token
 	const existing = await getStoredToken();
 	if (existing?.api_token) {
 		try {
-			const info = await verifyToken(existing.api_token);
+			const info = await verifyOAuthToken(existing.api_token);
+			if (!existing.email || existing.email !== info.email) {
+				await storeToken({
+					apiToken: existing.api_token,
+					email: info.email,
+					accountId: info.accountId,
+					accountName: info.accountName,
+				});
+			}
 			return {
 				api_token: existing.api_token,
-				email: info.email ?? existing.email,
-				account_id: info.accountId,
-				account_name: info.accountName ?? existing.account_name,
-			};
-		} catch {
-			console.log(
-				chalk.yellow("  Stored token is invalid, re-authenticating...\n"),
-			);
-		}
-	}
-
-	// 2. Try cert.pem from cloudflared
-	if (certExists()) {
-		const spinner = yoctoSpinner({ text: "Checking cloudflared credentials..." }).start();
-		try {
-			const cert = await readCert();
-			const info = await verifyToken(cert.apiToken);
-			await storeToken({
-				apiToken: cert.apiToken,
-				email: info.email,
-				accountId: info.accountId,
-				accountName: info.accountName,
-			});
-			spinner.success(
-				`Authenticated${info.email ? ` as ${info.email}` : ""} via cloudflared`,
-			);
-			return {
-				api_token: cert.apiToken,
 				email: info.email,
 				account_id: info.accountId,
 				account_name: info.accountName,
 			};
 		} catch {
-			spinner.warning(
-				"cloudflared cert.pem lacks full permissions, need an API token",
+			console.log(
+				chalk.yellow("  Stored token expired, re-authenticating...\n"),
 			);
 		}
 	}
 
-	// 3. Prompt for API token
-	const apiToken = await promptForApiToken();
+	// Run OAuth login
+	console.log(chalk.bold("\n  Sign in with Cloudflare\n"));
 
-	const spinner = yoctoSpinner({ text: "Verifying token..." }).start();
+	const tokens = await runOAuthFlow();
+
+	const spinner = yoctoSpinner({ text: "Verifying..." }).start();
 	try {
-		const info = await verifyToken(apiToken);
+		const info = await verifyOAuthToken(tokens.access_token);
 		await storeToken({
-			apiToken,
+			apiToken: tokens.access_token,
+			refreshToken: tokens.refresh_token,
+			expiresIn: tokens.expires_in,
 			email: info.email,
 			accountId: info.accountId,
 			accountName: info.accountName,
 		});
-		spinner.success(
-			`Authenticated${info.email ? ` as ${info.email}` : ""}`,
-		);
+		spinner.success(`Signed in as ${info.email}`);
 		return {
-			api_token: apiToken,
+			api_token: tokens.access_token,
 			email: info.email,
 			account_id: info.accountId,
 			account_name: info.accountName,
 		};
 	} catch (err: any) {
-		spinner.error("Token verification failed");
-		throw new Error(err.message);
+		spinner.error("Verification failed");
+		throw new Error(`OAuth token failed: ${err.message}`);
 	}
+}
+
+// ─── cloudflared cert.pem (tunnels + DNS routing) ───
+
+export async function ensureTunnelAuth(): Promise<OriginCert> {
+	// Check for existing cert.pem
+	if (certExists()) {
+		try {
+			return await readCert();
+		} catch {
+			console.log(
+				chalk.yellow("  Existing cert.pem is corrupt, re-authenticating...\n"),
+			);
+		}
+	}
+
+	// Need to run cloudflared tunnel login
+	await ensureCloudflared();
+
+	console.log(chalk.bold("\n  Authorize tunnel access\n"));
+	console.log(
+		chalk.dim("  Opening browser — pick any zone, the tunnel token is account-wide.\n"),
+	);
+
+	try {
+		execSync("cloudflared tunnel login", {
+			stdio: "inherit",
+			timeout: 300_000,
+		});
+	} catch {
+		throw new Error(
+			"cloudflared login failed. Run `cloudflared tunnel login` manually.",
+		);
+	}
+
+	if (!certExists()) {
+		throw new Error(`cert.pem not found at ${getCertPath()}`);
+	}
+
+	return readCert();
 }
