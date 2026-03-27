@@ -18,7 +18,7 @@ export async function lsCommand(): Promise<void> {
 	for (const entry of registry.tunnels) {
 		const running = await isTunnelRunning(entry.path);
 		const status = running
-			? `${chalk.hex("#FFD700")("●")} ${chalk.hex("#FFD700")("running")}`
+			? `${chalk.green("●")} ${chalk.green("running")}`
 			: `${chalk.red("●")} ${chalk.red("stopped")}`;
 
 		const lines = [
