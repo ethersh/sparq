@@ -19,7 +19,6 @@ import {
 	printWarning,
 	printError,
 	printDim,
-	printStep,
 } from "./format.js";
 import type { Route, ProjectConfig } from "../config/schema.js";
 import { basename } from "node:path";
@@ -76,11 +75,10 @@ export async function runSetupWizard(): Promise<void> {
 	let addMore = true;
 
 	while (addMore) {
-		printStep(`Route ${routes.length + 1}`);
 		console.log();
 
 		const portStr = await input({
-			message: "Port to forward",
+			message: "What port is your app running on?",
 			validate: (val) => {
 				const n = parseInt(val, 10);
 				if (isNaN(n) || n < 1 || n > 65535)
@@ -105,7 +103,7 @@ export async function runSetupWizard(): Promise<void> {
 					default: false,
 				});
 				if (!overwrite) {
-					printDim("Skipping this route.");
+					printDim("Skipped.");
 					continue;
 				}
 			}
@@ -115,7 +113,7 @@ export async function runSetupWizard(): Promise<void> {
 		printSuccess(`${hostname} → localhost:${port}`);
 
 		addMore = await confirm({
-			message: "Add another route?",
+			message: "Forward another port?",
 			default: false,
 		});
 	}
