@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { ensureAuth } from "../auth/ensure.js";
-import { printBanner, printBox, printSuccess, printError } from "../ui/format.js";
+import { printBanner, printBox, printError } from "../ui/format.js";
 
 export async function loginCommand(): Promise<void> {
 	printBanner();
