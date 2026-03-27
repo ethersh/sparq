@@ -2,10 +2,10 @@ import chalk from "chalk";
 import type { Route } from "../config/schema.js";
 
 // Brand colors
-const brand = chalk.cyan;
-const brandBold = chalk.cyan.bold;
-const success = chalk.green;
-const warn = chalk.yellow;
+const brand = chalk.hex("#FF8C00");
+const brandBold = chalk.hex("#FF8C00").bold;
+const success = chalk.hex("#FFD700");
+const warn = chalk.hex("#FFA500");
 const err = chalk.red;
 const dim = chalk.dim;
 const bold = chalk.bold;

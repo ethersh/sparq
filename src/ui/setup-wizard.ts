@@ -36,7 +36,7 @@ export async function runSetupWizard(): Promise<void> {
 			"",
 			chalk.dim("Let's get you connected in under a minute."),
 		],
-		chalk.cyan,
+		chalk.hex("#FF8C00"),
 	);
 
 	// Step 1: Ensure cloudflared

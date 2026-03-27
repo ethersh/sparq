@@ -15,7 +15,7 @@ export async function loginCommand(): Promise<void> {
 				`${chalk.dim("email")}    ${auth.email}`,
 				`${chalk.dim("account")}  ${auth.account_name ?? auth.account_id}`,
 			],
-			chalk.green,
+			chalk.hex("#FFD700"),
 		);
 		console.log();
 	} catch (err: any) {

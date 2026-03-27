@@ -18,7 +18,7 @@ export async function lsCommand(): Promise<void> {
 	for (const entry of registry.tunnels) {
 		const running = await isTunnelRunning(entry.path);
 		const status = running
-			? `${chalk.green("●")} ${chalk.green("running")}`
+			? `${chalk.hex("#FFD700")("●")} ${chalk.hex("#FFD700")("running")}`
 			: `${chalk.red("●")} ${chalk.red("stopped")}`;
 
 		const lines = [
@@ -29,7 +29,7 @@ export async function lsCommand(): Promise<void> {
 
 		for (const route of entry.routes) {
 			lines.push(
-				`${chalk.cyan(route.hostname)} ${chalk.dim("→")} localhost:${route.port}`,
+				`${chalk.hex("#FF8C00")(route.hostname)} ${chalk.dim("→")} localhost:${route.port}`,
 			);
 		}
 
