@@ -5,7 +5,8 @@ import yoctoSpinner from "yocto-spinner";
 import { storeToken, getStoredToken } from "./store.js";
 import { certExists, readCert, getCertPath, type OriginCert } from "./cert.js";
 import { ensureCloudflared } from "../deps/ensure.js";
-import { runOAuthFlow } from "./oauth.js";
+import { runOAuthFlow, refreshOAuthToken } from "./oauth.js";
+import { resetClient } from "../cf/client.js";
 import type { AuthToken } from "../config/schema.js";
 
 const CF_API = "https://api.cloudflare.com/client/v4";
@@ -57,6 +58,7 @@ export async function ensureAuth(): Promise<AuthToken> {
 			if (!existing.email || existing.email !== info.email) {
 				await storeToken({
 					apiToken: existing.api_token,
+					refreshToken: existing.refresh_token,
 					email: info.email,
 					accountId: info.accountId,
 					accountName: info.accountName,
@@ -69,9 +71,39 @@ export async function ensureAuth(): Promise<AuthToken> {
 				account_name: info.accountName,
 			};
 		} catch {
-			console.log(
-				chalk.yellow("  Stored token expired, re-authenticating...\n"),
-			);
+			// Token expired — try refresh before falling back to full re-auth
+			if (existing.refresh_token) {
+				try {
+					console.log(
+						chalk.dim("  Refreshing token...\n"),
+					);
+					const tokens = await refreshOAuthToken(existing.refresh_token);
+					const info = await verifyOAuthToken(tokens.access_token);
+					await storeToken({
+						apiToken: tokens.access_token,
+						refreshToken: tokens.refresh_token ?? existing.refresh_token,
+						expiresIn: tokens.expires_in,
+						email: info.email,
+						accountId: info.accountId,
+						accountName: info.accountName,
+					});
+					resetClient();
+					return {
+						api_token: tokens.access_token,
+						email: info.email,
+						account_id: info.accountId,
+						account_name: info.accountName,
+					};
+				} catch {
+					console.log(
+						chalk.yellow("  Refresh failed, re-authenticating...\n"),
+					);
+				}
+			} else {
+				console.log(
+					chalk.yellow("  Stored token expired, re-authenticating...\n"),
+				);
+			}
 		}
 	}
 
@@ -91,6 +123,7 @@ export async function ensureAuth(): Promise<AuthToken> {
 			accountId: info.accountId,
 			accountName: info.accountName,
 		});
+		resetClient();
 		spinner.success(`Signed in as ${info.email}`);
 		return {
 			api_token: tokens.access_token,

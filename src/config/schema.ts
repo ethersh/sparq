@@ -21,6 +21,8 @@ export const TunnelCredentialsSchema = z.object({
 
 export const AuthTokenSchema = z.object({
 	api_token: z.string(),
+	refresh_token: z.string().optional(),
+	expires_at: z.number().optional(),
 	email: z.string().email().optional(),
 	account_id: z.string().optional(),
 	account_name: z.string().optional(),

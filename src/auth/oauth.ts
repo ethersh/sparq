@@ -18,17 +18,7 @@ const OAUTH_CALLBACK_URL = `http://localhost:${CALLBACK_PORT}/oauth/callback`;
 const SCOPES = [
 	"account:read",
 	"user:read",
-	"workers:write",
-	"workers_kv:write",
-	"workers_routes:write",
-	"workers_scripts:write",
-	"workers_tail:read",
-	"d1:write",
-	"pages:write",
 	"zone:read",
-	"ssl_certs:write",
-	"ai:write",
-	"queues:write",
 	"offline_access",
 ].join(" ");
 
@@ -147,6 +137,23 @@ export async function runOAuthFlow(): Promise<OAuthTokens> {
 			reject(new Error("Login timed out after 2 minutes"));
 		}, 120_000);
 	});
+}
+
+export async function refreshOAuthToken(
+	refreshToken: string,
+): Promise<OAuthTokens> {
+	const res = await axios.post<OAuthTokens>(
+		CF_TOKEN_URL,
+		new URLSearchParams({
+			grant_type: "refresh_token",
+			refresh_token: refreshToken,
+			client_id: CF_CLIENT_ID,
+		}).toString(),
+		{
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+		},
+	);
+	return res.data;
 }
 
 async function exchangeCode(

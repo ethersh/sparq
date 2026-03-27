@@ -11,6 +11,10 @@ export async function storeToken(opts: {
 }): Promise<void> {
 	await saveAuth({
 		api_token: opts.apiToken,
+		refresh_token: opts.refreshToken,
+		expires_at: opts.expiresIn
+			? Math.floor(Date.now() / 1000) + opts.expiresIn
+			: undefined,
 		email: opts.email,
 		account_id: opts.accountId,
 		account_name: opts.accountName,
