@@ -55,10 +55,19 @@ program
 	.action(withErrorHandler(lsCommand));
 
 program
+	.command("up")
+	.description("Start the tunnel (alias for default)")
+	.action(withErrorHandler(defaultCommand));
+
+program
 	.command("logs")
 	.description("Show tunnel logs")
 	.option("-f, --follow", "Follow log output", false)
-	.action(withErrorHandler(logsCommand));
+	.action(
+		withErrorHandler(async (opts: { follow: boolean }) => {
+			await logsCommand(opts);
+		}),
+	);
 
 program
 	.command("login")

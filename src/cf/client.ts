@@ -21,6 +21,20 @@ export async function getCfClient(): Promise<AxiosInstance> {
 		},
 	});
 
+	// Intercept errors to surface Cloudflare error messages
+	clientInstance.interceptors.response.use(
+		(res) => res,
+		(error) => {
+			if (error.response?.data?.errors?.length > 0) {
+				const cfErrors = error.response.data.errors
+					.map((e: { message: string }) => e.message)
+					.join(", ");
+				throw new Error(`Cloudflare API: ${cfErrors}`);
+			}
+			throw error;
+		},
+	);
+
 	return clientInstance;
 }
 
