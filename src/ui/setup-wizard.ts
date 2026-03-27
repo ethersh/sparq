@@ -8,28 +8,37 @@ import { getDnsRecord, createDnsRecord, updateDnsRecord } from "../cf/dns.js";
 import { createTunnel } from "../cf/tunnels.js";
 import { generateCloudflaredConfig } from "../tunnel/config-gen.js";
 import { startTunnel } from "../tunnel/daemon.js";
-import {
-	saveProjectConfig,
-	saveCredentials,
-} from "../config/project.js";
+import { saveProjectConfig, saveCredentials } from "../config/project.js";
 import { registerTunnel } from "../config/global.js";
 import { promptDomainWithAutocomplete } from "./domain-input.js";
 import {
 	printBanner,
+	printBox,
 	printRoutes,
 	printSuccess,
 	printWarning,
 	printError,
 	printDim,
+	printStep,
 } from "./format.js";
 import type { Route, ProjectConfig } from "../config/schema.js";
 import { basename } from "node:path";
 
 export async function runSetupWizard(): Promise<void> {
 	printBanner();
-	printDim("No tunnel configured for this directory. Let's set one up.\n");
+
+	printBox(
+		"setup",
+		[
+			"No tunnel configured for this directory.",
+			"",
+			chalk.dim("Let's get you connected in under a minute."),
+		],
+		chalk.cyan,
+	);
 
 	// Step 1: Ensure dependencies
+	console.log();
 	await ensureCloudflared();
 
 	// Step 2: Authenticate
@@ -38,14 +47,18 @@ export async function runSetupWizard(): Promise<void> {
 		printError("Could not determine account ID");
 		process.exit(1);
 	}
-	console.log();
 
 	// Step 3: Fetch zones
-	const zonesSpinner = yoctoSpinner({ text: "Fetching your domains..." }).start();
+	console.log();
+	const zonesSpinner = yoctoSpinner({
+		text: "Fetching your domains...",
+	}).start();
 	let zones;
 	try {
 		zones = await listZones();
-		zonesSpinner.success(`Found ${zones.length} zone${zones.length === 1 ? "" : "s"}`);
+		zonesSpinner.success(
+			`Found ${zones.length} zone${zones.length === 1 ? "" : "s"}`,
+		);
 	} catch (err: any) {
 		zonesSpinner.error("Failed to fetch zones");
 		printError(err.message);
@@ -63,16 +76,15 @@ export async function runSetupWizard(): Promise<void> {
 	let addMore = true;
 
 	while (addMore) {
+		printStep(`Route ${routes.length + 1}`);
 		console.log();
-		console.log(
-			chalk.bold(`  Route ${routes.length + 1}`),
-		);
 
 		const portStr = await input({
 			message: "Port to forward",
 			validate: (val) => {
 				const n = parseInt(val, 10);
-				if (isNaN(n) || n < 1 || n > 65535) return "Enter a valid port (1-65535)";
+				if (isNaN(n) || n < 1 || n > 65535)
+					return "Enter a valid port (1-65535)";
 				return true;
 			},
 		});
@@ -85,7 +97,9 @@ export async function runSetupWizard(): Promise<void> {
 		if (zone) {
 			const existing = await getDnsRecord(zone.id, hostname);
 			if (existing) {
-				printWarning(`DNS record already exists: ${hostname} → ${existing.content}`);
+				printWarning(
+					`DNS record exists: ${hostname} → ${existing.content}`,
+				);
 				const overwrite = await confirm({
 					message: "Overwrite existing record?",
 					default: false,
@@ -119,6 +133,7 @@ export async function runSetupWizard(): Promise<void> {
 		.replace(/-+/g, "-")
 		.replace(/^-|-$/g, "");
 	const tunnelName = `sparq-${dirName || "tunnel"}`;
+
 	const tunnelSpinner = yoctoSpinner({
 		text: `Creating tunnel "${tunnelName}"...`,
 	}).start();
@@ -129,7 +144,7 @@ export async function runSetupWizard(): Promise<void> {
 		const result = await createTunnel(auth.account_id, tunnelName);
 		tunnel = result.tunnel;
 		credentials = result.credentials;
-		tunnelSpinner.success(`Created tunnel "${tunnelName}"`);
+		tunnelSpinner.success(`Tunnel "${tunnelName}" created`);
 	} catch (err: any) {
 		tunnelSpinner.error("Failed to create tunnel");
 		printError(err.message);
@@ -145,19 +160,24 @@ export async function runSetupWizard(): Promise<void> {
 		}
 
 		const dnsSpinner = yoctoSpinner({
-			text: `Setting up DNS for ${route.hostname}...`,
+			text: `DNS: ${route.hostname}...`,
 		}).start();
 
 		try {
 			const existing = await getDnsRecord(zone.id, route.hostname);
 			if (existing) {
-				await updateDnsRecord(zone.id, existing.id, route.hostname, tunnel.id);
+				await updateDnsRecord(
+					zone.id,
+					existing.id,
+					route.hostname,
+					tunnel.id,
+				);
 			} else {
 				await createDnsRecord(zone.id, route.hostname, tunnel.id);
 			}
 			dnsSpinner.success(`DNS: ${route.hostname} → tunnel`);
 		} catch (err: any) {
-			dnsSpinner.error(`Failed to create DNS for ${route.hostname}`);
+			dnsSpinner.error(`DNS failed: ${route.hostname}`);
 			printError(err.message);
 		}
 	}
@@ -192,7 +212,7 @@ export async function runSetupWizard(): Promise<void> {
 		process.exit(1);
 	}
 
-	// Step 9: Print summary
+	// Step 9: Summary
 	console.log();
 	printRoutes(routes, true);
 	printDim("Run `sparq status` to check, `sparq down` to stop.");

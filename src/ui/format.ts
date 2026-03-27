@@ -1,45 +1,99 @@
 import chalk from "chalk";
 import type { Route } from "../config/schema.js";
 
+// Brand colors
+const brand = chalk.cyan;
+const brandBold = chalk.cyan.bold;
+const success = chalk.green;
+const warn = chalk.yellow;
+const err = chalk.red;
+const dim = chalk.dim;
+const bold = chalk.bold;
+
+const BOLT = "⚡";
+
 export function printBanner(): void {
 	console.log();
-	console.log(chalk.bold("  sparq"));
-	console.log(chalk.dim("  Cloudflare Tunnels, simplified."));
+	console.log(
+		`  ${brand(BOLT)} ${brandBold("sparq")} ${dim("— fast tunnelling")}`,
+	);
 	console.log();
+}
+
+export function printBox(
+	title: string,
+	lines: string[],
+	color: typeof chalk = brand,
+): void {
+	const contentWidth = Math.max(
+		title.length + 4,
+		...lines.map((l) => stripAnsi(l).length + 4),
+		50,
+	);
+
+	const top = `  ${color("╭")}${color("─")} ${color.bold(title)} ${color("─".repeat(Math.max(0, contentWidth - title.length - 3)))}${color("╮")}`;
+	const bottom = `  ${color("╰")}${color("─".repeat(contentWidth))}${color("╯")}`;
+
+	console.log(top);
+	for (const line of lines) {
+		const padding = contentWidth - stripAnsi(line).length - 2;
+		console.log(
+			`  ${color("│")} ${line}${" ".repeat(Math.max(0, padding))} ${color("│")}`,
+		);
+	}
+	console.log(bottom);
 }
 
 export function printRoutes(routes: Route[], running: boolean): void {
 	const status = running
-		? chalk.green("● running")
-		: chalk.red("● stopped");
+		? `${success("●")} ${success("running")}`
+		: `${err("●")} ${err("stopped")}`;
 
-	console.log(`  ${status}`);
-	console.log();
+	const lines = [status, ""];
 
 	for (const route of routes) {
-		console.log(
-			`  ${chalk.cyan(route.hostname)} ${chalk.dim("→")} ${chalk.white(`localhost:${route.port}`)}`,
+		lines.push(
+			`${brand(route.hostname)} ${dim("→")} ${chalk.white(`localhost:${route.port}`)}`,
 		);
 	}
+
+	if (routes.length === 0) {
+		lines.push(dim("no routes configured"));
+	}
+
+	printBox("tunnel", lines);
 	console.log();
 }
 
 export function printSuccess(msg: string): void {
-	console.log(chalk.green(`  ✓ ${msg}`));
+	console.log(`  ${success("✓")} ${msg}`);
 }
 
 export function printWarning(msg: string): void {
-	console.log(chalk.yellow(`  ⚠ ${msg}`));
+	console.log(`  ${warn("⚠")} ${msg}`);
 }
 
 export function printError(msg: string): void {
-	console.log(chalk.red(`  ✗ ${msg}`));
+	console.log(`  ${err("✗")} ${msg}`);
 }
 
 export function printDim(msg: string): void {
-	console.log(chalk.dim(`  ${msg}`));
+	console.log(`  ${dim(msg)}`);
 }
 
 export function printHint(msg: string): void {
-	console.log(chalk.dim(`  ${msg}`));
+	console.log(`  ${dim(msg)}`);
+}
+
+export function printStep(label: string): void {
+	console.log(`\n  ${brandBold(label)}`);
+}
+
+// Strip ANSI escape codes for width calculation
+function stripAnsi(str: string): string {
+	return str.replace(
+		// eslint-disable-next-line no-control-regex
+		/\u001b\[[0-9;]*m/g,
+		"",
+	);
 }

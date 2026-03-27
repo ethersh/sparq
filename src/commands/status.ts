@@ -1,11 +1,7 @@
+import chalk from "chalk";
 import { isConfigured, getProjectConfig } from "../config/project.js";
 import { isTunnelRunning, getTunnelPid } from "../tunnel/daemon.js";
-import {
-	printBanner,
-	printRoutes,
-	printDim,
-} from "../ui/format.js";
-import chalk from "chalk";
+import { printBanner, printRoutes, printBox, printDim } from "../ui/format.js";
 
 export async function statusCommand(): Promise<void> {
 	printBanner();
@@ -13,6 +9,7 @@ export async function statusCommand(): Promise<void> {
 	if (!isConfigured()) {
 		printDim("No tunnel configured in this directory.");
 		printDim("Run `sparq` to set one up.");
+		console.log();
 		return;
 	}
 
@@ -28,8 +25,11 @@ export async function statusCommand(): Promise<void> {
 	printRoutes(config.routes, running);
 
 	if (running && pid) {
-		console.log(chalk.dim(`  PID: ${pid}`));
-		console.log(chalk.dim(`  Tunnel: ${config.tunnel_name} (${config.tunnel_id})`));
+		printBox("info", [
+			`${chalk.dim("tunnel")}  ${config.tunnel_name}`,
+			`${chalk.dim("id")}      ${config.tunnel_id}`,
+			`${chalk.dim("pid")}     ${pid}`,
+		]);
+		console.log();
 	}
-	console.log();
 }

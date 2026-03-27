@@ -6,6 +6,6 @@ export async function logoutCommand(): Promise<void> {
 	printBanner();
 	await logout();
 	resetClient();
-	printSuccess("Logged out. Token removed from ~/.sparq/auth.json");
+	printSuccess("Logged out. Credentials removed.");
 	console.log();
 }
