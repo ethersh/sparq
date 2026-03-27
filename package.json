@@ -1,31 +1,35 @@
 {
-	"name": "sparq",
-	"version": "0.1.0",
-	"description": "Dead-simple Cloudflare Tunnel management. Like Tailscale, but for Cloudflare.",
-	"type": "module",
-	"bin": {
-		"sparq": "./dist/index.js"
-	},
-	"scripts": {
-		"build": "tsup",
-		"dev": "bun run src/index.ts",
-		"start": "node dist/index.js"
-	},
-	"dependencies": {
-		"@inquirer/prompts": "^7.6.0",
-		"axios": "^1.10.0",
-		"chalk": "^5.2.0",
-		"commander": "^14.0.0",
-		"dotenv": "^17.2.0",
-		"inquirer": "^12.7.0",
-		"open": "^10.1.2",
-		"yocto-spinner": "^1.0.0",
-		"zod": "^4.0.0"
-	},
-	"devDependencies": {
-		"@types/bun": "^1.2.21",
-		"@types/node": "^24.0.10",
-		"tsup": "^8.5.0",
-		"typescript": "^5.0.3"
-	}
+  "name": "trysparq",
+  "version": "0.1.0",
+  "description": "super fast tunnelling for local development",
+  "type": "module",
+  "bin": {
+    "sparq": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "bun run src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.6.0",
+    "axios": "^1.10.0",
+    "chalk": "^5.2.0",
+    "commander": "^14.0.0",
+    "open": "^10.1.2",
+    "yocto-spinner": "^1.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.21",
+    "@types/node": "^24.0.10",
+    "tsup": "^8.5.0",
+    "typescript": "^5.0.3"
+  }
 }
