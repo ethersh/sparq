@@ -34,7 +34,13 @@ async function verifyAndEnrich(
 		"https://api.cloudflare.com/client/v4/accounts",
 		{ headers, params: { per_page: 1 } },
 	);
-	const account: CfAccount = accountsRes.data.result[0];
+	const accounts: CfAccount[] = accountsRes.data.result;
+	if (!accounts || accounts.length === 0) {
+		throw new Error(
+			"No Cloudflare accounts found. Ensure your token has Account permissions.",
+		);
+	}
+	const account = accounts[0];
 
 	return {
 		email: user.email,

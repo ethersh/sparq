@@ -10,7 +10,7 @@ function fuzzyScore(query: string, target: string): number {
 	if (t.startsWith(q)) return 90;
 
 	const idx = t.indexOf(q);
-	if (idx >= 0) return 80 - idx;
+	if (idx >= 0) return Math.max(1, 80 - idx);
 
 	// Character-by-character fuzzy
 	let qi = 0;

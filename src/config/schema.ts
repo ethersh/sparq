@@ -10,7 +10,7 @@ export const ProjectConfigSchema = z.object({
 	tunnel_id: z.string().uuid(),
 	tunnel_name: z.string(),
 	account_id: z.string(),
-	routes: z.array(RouteSchema).min(1),
+	routes: z.array(RouteSchema),
 });
 
 export const TunnelCredentialsSchema = z.object({

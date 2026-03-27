@@ -36,7 +36,12 @@ export async function logsCommand(opts: { follow: boolean }): Promise<void> {
 		});
 	} else {
 		const content = await readFile(logFile, "utf-8");
-		const lines = content.trim().split("\n");
+		const trimmed = content.trim();
+		if (!trimmed) {
+			printDim("Log file is empty. Tunnel may not have started yet.");
+			return;
+		}
+		const lines = trimmed.split("\n");
 		// Show last 50 lines
 		const tail = lines.slice(-50);
 		for (const line of tail) {

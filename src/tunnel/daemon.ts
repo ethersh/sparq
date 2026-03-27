@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
-import chalk from "chalk";
+import { openSync, closeSync } from "node:fs";
 import {
 	savePid,
 	getPid,
@@ -42,6 +41,9 @@ export async function startTunnel(cwd?: string): Promise<number> {
 	});
 
 	child.unref();
+
+	// Close the fd in the parent — child inherits its own copy
+	closeSync(logFd);
 
 	if (!child.pid) {
 		throw new Error("Failed to start cloudflared process");
