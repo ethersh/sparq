@@ -8,6 +8,7 @@ import { lsCommand } from "./commands/ls.js";
 import { loginCommand } from "./commands/login.js";
 import { logoutCommand } from "./commands/logout.js";
 import { logsCommand } from "./commands/logs.js";
+import { importCommand } from "./commands/import.js";
 import { printError } from "./ui/format.js";
 
 const program = new Command();
@@ -73,6 +74,11 @@ program
 	.command("login")
 	.description("Authenticate with Cloudflare")
 	.action(withErrorHandler(loginCommand));
+
+program
+	.command("import [path]")
+	.description("Import tunnel config from another directory (e.g. worktree)")
+	.action(withErrorHandler(importCommand));
 
 program
 	.command("logout")
