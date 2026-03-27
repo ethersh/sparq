@@ -17,19 +17,19 @@ export function isProcessRunning(pid: number): boolean {
 	}
 }
 
-export async function isTunnelRunning(cwd?: string): Promise<boolean> {
-	const pid = await getPid(cwd);
+export async function isTunnelRunning(tunnelId: string): Promise<boolean> {
+	const pid = await getPid(tunnelId);
 	if (!pid) return false;
 	if (!isProcessRunning(pid)) {
-		await clearPid(cwd);
+		await clearPid(tunnelId);
 		return false;
 	}
 	return true;
 }
 
-export async function startTunnel(cwd?: string): Promise<number> {
-	const configPath = getCloudflaredConfigPath(cwd);
-	const logFile = getLogPath(cwd);
+export async function startTunnel(tunnelId: string): Promise<number> {
+	const configPath = getCloudflaredConfigPath(tunnelId);
+	const logFile = getLogPath(tunnelId);
 
 	// Open log file for writing
 	const logFd = openSync(logFile, "a");
@@ -37,7 +37,6 @@ export async function startTunnel(cwd?: string): Promise<number> {
 	const child = spawn("cloudflared", ["tunnel", "--config", configPath, "run"], {
 		detached: true,
 		stdio: ["ignore", logFd, logFd],
-		cwd: cwd ?? process.cwd(),
 	});
 
 	child.unref();
@@ -49,16 +48,16 @@ export async function startTunnel(cwd?: string): Promise<number> {
 		throw new Error("Failed to start cloudflared process");
 	}
 
-	await savePid(child.pid, cwd);
+	await savePid(child.pid, tunnelId);
 	return child.pid;
 }
 
-export async function stopTunnel(cwd?: string): Promise<boolean> {
-	const pid = await getPid(cwd);
+export async function stopTunnel(tunnelId: string): Promise<boolean> {
+	const pid = await getPid(tunnelId);
 	if (!pid) return false;
 
 	if (!isProcessRunning(pid)) {
-		await clearPid(cwd);
+		await clearPid(tunnelId);
 		return false;
 	}
 
@@ -73,15 +72,15 @@ export async function stopTunnel(cwd?: string): Promise<boolean> {
 		// Process already gone
 	}
 
-	await clearPid(cwd);
+	await clearPid(tunnelId);
 	return true;
 }
 
-export async function getTunnelPid(cwd?: string): Promise<number | null> {
-	const pid = await getPid(cwd);
+export async function getTunnelPid(tunnelId: string): Promise<number | null> {
+	const pid = await getPid(tunnelId);
 	if (!pid) return null;
 	if (!isProcessRunning(pid)) {
-		await clearPid(cwd);
+		await clearPid(tunnelId);
 		return null;
 	}
 	return pid;

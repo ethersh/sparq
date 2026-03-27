@@ -1,4 +1,7 @@
 import { writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { dirname } from "node:path";
 import {
 	getCloudflaredConfigPath,
 	getCredentialsPath,
@@ -7,10 +10,14 @@ import type { ProjectConfig } from "../config/schema.js";
 
 export async function generateCloudflaredConfig(
 	config: ProjectConfig,
-	cwd?: string,
 ): Promise<string> {
-	const configPath = getCloudflaredConfigPath(cwd);
-	const credentialsFile = getCredentialsPath(cwd);
+	const configPath = getCloudflaredConfigPath(config.tunnel_id);
+	const credentialsFile = getCredentialsPath(config.tunnel_id);
+
+	const dir = dirname(configPath);
+	if (!existsSync(dir)) {
+		await mkdir(dir, { recursive: true });
+	}
 
 	const ingress = config.routes
 		.map(

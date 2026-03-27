@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import { readFile, writeFile, mkdir, unlink } from "node:fs/promises";
+import { homedir } from "node:os";
+import { readFile, writeFile, mkdir, unlink, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import {
 	ProjectConfigSchema,
@@ -8,6 +9,7 @@ import {
 	type TunnelCredentials,
 } from "./schema.js";
 
+// Project-local directory — only non-sensitive config (routes, tunnel name)
 function sparqDir(cwd?: string): string {
 	return join(cwd ?? process.cwd(), ".sparq");
 }
@@ -16,21 +18,35 @@ function configPath(cwd?: string): string {
 	return join(sparqDir(cwd), "config.json");
 }
 
-function credentialsPath(cwd?: string): string {
-	return join(sparqDir(cwd), "credentials.json");
+// Sensitive/runtime files live in ~/.sparq/tunnels/<tunnel_id>/
+function tunnelDataDir(tunnelId: string): string {
+	return join(homedir(), ".sparq", "tunnels", tunnelId);
 }
 
-function cloudflaredConfigPath(cwd?: string): string {
-	return join(sparqDir(cwd), "cloudflared.yml");
+async function ensureTunnelDataDir(tunnelId: string): Promise<void> {
+	const dir = tunnelDataDir(tunnelId);
+	if (!existsSync(dir)) {
+		await mkdir(dir, { recursive: true });
+	}
 }
 
-function pidPath(cwd?: string): string {
-	return join(sparqDir(cwd), "pid");
+function credentialsPath(tunnelId: string): string {
+	return join(tunnelDataDir(tunnelId), "credentials.json");
 }
 
-function logPath(cwd?: string): string {
-	return join(sparqDir(cwd), "tunnel.log");
+function cloudflaredConfigPath(tunnelId: string): string {
+	return join(tunnelDataDir(tunnelId), "cloudflared.yml");
 }
+
+function pidPath(tunnelId: string): string {
+	return join(tunnelDataDir(tunnelId), "pid");
+}
+
+function logPath(tunnelId: string): string {
+	return join(tunnelDataDir(tunnelId), "tunnel.log");
+}
+
+// --- Project config (non-sensitive, lives in project .sparq/) ---
 
 export function isConfigured(cwd?: string): boolean {
 	return existsSync(configPath(cwd));
@@ -62,11 +78,13 @@ export async function saveProjectConfig(
 	await writeFile(configPath(cwd), JSON.stringify(config, null, "\t"), "utf-8");
 }
 
+// --- Credentials (sensitive, lives in ~/.sparq/tunnels/<id>/) ---
+
 export async function getCredentials(
-	cwd?: string,
+	tunnelId: string,
 ): Promise<TunnelCredentials | null> {
 	try {
-		const raw = await readFile(credentialsPath(cwd), "utf-8");
+		const raw = await readFile(credentialsPath(tunnelId), "utf-8");
 		return TunnelCredentialsSchema.parse(JSON.parse(raw));
 	} catch {
 		return null;
@@ -75,50 +93,70 @@ export async function getCredentials(
 
 export async function saveCredentials(
 	creds: TunnelCredentials,
-	cwd?: string,
+	tunnelId: string,
 ): Promise<void> {
-	await ensureProjectDir(cwd);
+	await ensureTunnelDataDir(tunnelId);
 	await writeFile(
-		credentialsPath(cwd),
+		credentialsPath(tunnelId),
 		JSON.stringify(creds, null, "\t"),
 		"utf-8",
 	);
 }
 
-export async function savePid(pid: number, cwd?: string): Promise<void> {
-	await ensureProjectDir(cwd);
-	await writeFile(pidPath(cwd), String(pid), "utf-8");
+// --- PID (runtime, lives in ~/.sparq/tunnels/<id>/) ---
+
+export async function savePid(pid: number, tunnelId: string): Promise<void> {
+	await ensureTunnelDataDir(tunnelId);
+	await writeFile(pidPath(tunnelId), String(pid), "utf-8");
 }
 
-export async function getPid(cwd?: string): Promise<number | null> {
+export async function getPid(tunnelId: string): Promise<number | null> {
 	try {
-		const raw = await readFile(pidPath(cwd), "utf-8");
+		const raw = await readFile(pidPath(tunnelId), "utf-8");
 		return parseInt(raw.trim(), 10);
 	} catch {
 		return null;
 	}
 }
 
-export async function clearPid(cwd?: string): Promise<void> {
+export async function clearPid(tunnelId: string): Promise<void> {
 	try {
-		await unlink(pidPath(cwd));
+		await unlink(pidPath(tunnelId));
 	} catch {
 		// already gone
 	}
 }
 
-export function getCloudflaredConfigPath(cwd?: string): string {
-	return cloudflaredConfigPath(cwd);
+// --- Path getters ---
+
+export function getCloudflaredConfigPath(tunnelId: string): string {
+	return cloudflaredConfigPath(tunnelId);
 }
 
-export function getCredentialsPath(cwd?: string): string {
-	return credentialsPath(cwd);
+export function getCredentialsPath(tunnelId: string): string {
+	return credentialsPath(tunnelId);
 }
 
-export function getLogPath(cwd?: string): string {
-	return logPath(cwd);
+export function getLogPath(tunnelId: string): string {
+	return logPath(tunnelId);
 }
 
 export function getProjectSparqDir(cwd?: string): string {
 	return sparqDir(cwd);
+}
+
+// --- Cleanup ---
+
+export async function removeProjectConfig(cwd?: string): Promise<void> {
+	const dir = sparqDir(cwd);
+	if (existsSync(dir)) {
+		await rm(dir, { recursive: true, force: true });
+	}
+}
+
+export async function removeTunnelData(tunnelId: string): Promise<void> {
+	const dir = tunnelDataDir(tunnelId);
+	if (existsSync(dir)) {
+		await rm(dir, { recursive: true, force: true });
+	}
 }

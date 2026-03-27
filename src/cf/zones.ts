@@ -44,5 +44,5 @@ export function extractZoneFromHostname(
 ): Zone | undefined {
 	// Sort zones by name length descending to match most specific first
 	const sorted = [...zones].sort((a, b) => b.name.length - a.name.length);
-	return sorted.find((z) => hostname.endsWith(z.name));
+	return sorted.find((z) => hostname === z.name || hostname.endsWith(`.${z.name}`));
 }
