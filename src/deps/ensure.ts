@@ -1,4 +1,5 @@
 import { execSync } from "node:child_process";
+import { arch } from "node:os";
 import chalk from "chalk";
 import yoctoSpinner from "yocto-spinner";
 
@@ -30,15 +31,15 @@ async function installCloudflared(): Promise<void> {
 		if (platform === "macos" && hasHomebrew()) {
 			execSync("brew install cloudflared", { stdio: "ignore", timeout: 120000 });
 		} else if (platform === "linux") {
-			// Try apt first, then curl
+			const linuxArch = arch() === "arm64" ? "arm64" : "amd64";
 			try {
 				execSync(
-					"curl -L --output /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && sudo dpkg -i /tmp/cloudflared.deb",
+					`curl -L --output /tmp/cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${linuxArch}.deb && sudo dpkg -i /tmp/cloudflared.deb`,
 					{ stdio: "ignore", timeout: 120000 },
 				);
 			} catch {
 				execSync(
-					"curl -L --output /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x /usr/local/bin/cloudflared",
+					`curl -L --output /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${linuxArch} && chmod +x /usr/local/bin/cloudflared`,
 					{ stdio: "ignore", timeout: 120000 },
 				);
 			}

@@ -1,4 +1,7 @@
 import { Command } from "commander";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { defaultCommand } from "./commands/default.js";
 import { downCommand } from "./commands/down.js";
 import { statusCommand } from "./commands/status.js";
@@ -9,7 +12,11 @@ import { loginCommand } from "./commands/login.js";
 import { logoutCommand } from "./commands/logout.js";
 import { logsCommand } from "./commands/logs.js";
 import { importCommand } from "./commands/import.js";
+import { destroyCommand } from "./commands/destroy.js";
 import { printError } from "./ui/format.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
 
 const program = new Command();
 
@@ -27,7 +34,7 @@ function withErrorHandler(fn: (...args: any[]) => Promise<void>) {
 program
 	.name("sparq")
 	.description("Cloudflare Tunnels, simplified.")
-	.version("0.1.0")
+	.version(pkg.version)
 	.action(withErrorHandler(defaultCommand));
 
 program
@@ -84,5 +91,10 @@ program
 	.command("logout")
 	.description("Remove stored Cloudflare credentials")
 	.action(withErrorHandler(logoutCommand));
+
+program
+	.command("destroy")
+	.description("Permanently destroy tunnel, DNS records, and all config")
+	.action(withErrorHandler(destroyCommand));
 
 program.parse();
