@@ -6,93 +6,68 @@ import { addCommand } from "./commands/add.js";
 import { rmCommand } from "./commands/rm.js";
 import { lsCommand } from "./commands/ls.js";
 import { loginCommand } from "./commands/login.js";
+import { logoutCommand } from "./commands/logout.js";
+import { logsCommand } from "./commands/logs.js";
 import { printError } from "./ui/format.js";
 
 const program = new Command();
+
+function withErrorHandler(fn: (...args: any[]) => Promise<void>) {
+	return async (...args: any[]) => {
+		try {
+			await fn(...args);
+		} catch (err: any) {
+			printError(err.message);
+			process.exit(1);
+		}
+	};
+}
 
 program
 	.name("sparq")
 	.description("Cloudflare Tunnels, simplified.")
 	.version("0.1.0")
-	.action(async () => {
-		try {
-			await defaultCommand();
-		} catch (err: any) {
-			printError(err.message);
-			process.exit(1);
-		}
-	});
+	.action(withErrorHandler(defaultCommand));
 
 program
 	.command("down")
 	.description("Stop the tunnel for this directory")
-	.action(async () => {
-		try {
-			await downCommand();
-		} catch (err: any) {
-			printError(err.message);
-			process.exit(1);
-		}
-	});
+	.action(withErrorHandler(downCommand));
 
 program
 	.command("status")
 	.description("Show tunnel status")
-	.action(async () => {
-		try {
-			await statusCommand();
-		} catch (err: any) {
-			printError(err.message);
-			process.exit(1);
-		}
-	});
+	.action(withErrorHandler(statusCommand));
 
 program
 	.command("add")
 	.description("Add a new route to the tunnel")
-	.action(async () => {
-		try {
-			await addCommand();
-		} catch (err: any) {
-			printError(err.message);
-			process.exit(1);
-		}
-	});
+	.action(withErrorHandler(addCommand));
 
 program
 	.command("rm <hostname>")
 	.description("Remove a route and its DNS record")
-	.action(async (hostname: string) => {
-		try {
-			await rmCommand(hostname);
-		} catch (err: any) {
-			printError(err.message);
-			process.exit(1);
-		}
-	});
+	.action(withErrorHandler(rmCommand));
 
 program
 	.command("ls")
 	.description("List all sparq-managed tunnels")
-	.action(async () => {
-		try {
-			await lsCommand();
-		} catch (err: any) {
-			printError(err.message);
-			process.exit(1);
-		}
-	});
+	.action(withErrorHandler(lsCommand));
+
+program
+	.command("logs")
+	.description("Show tunnel logs")
+	.option("-f, --follow", "Follow log output", false)
+	.action(withErrorHandler(logsCommand));
 
 program
 	.command("login")
 	.description("Authenticate with Cloudflare")
-	.action(async () => {
-		try {
-			await loginCommand();
-		} catch (err: any) {
-			printError(err.message);
-			process.exit(1);
-		}
-	});
+	.action(withErrorHandler(loginCommand));
+
+program
+	.command("logout")
+	.description("Remove stored Cloudflare credentials")
+	.action(withErrorHandler(logoutCommand));
 
 program.parse();

@@ -1,46 +1,25 @@
-import { input, select, confirm } from "@inquirer/prompts";
+import { input, search } from "@inquirer/prompts";
 import chalk from "chalk";
 import type { Zone } from "../cf/zones.js";
 
-function fuzzyMatch(query: string, target: string): boolean {
+function fuzzyScore(query: string, target: string): number {
 	const q = query.toLowerCase();
 	const t = target.toLowerCase();
 
-	// Direct substring match
-	if (t.includes(q)) return true;
-
-	// Character-by-character fuzzy match
-	let qi = 0;
-	for (let ti = 0; ti < t.length && qi < q.length; ti++) {
-		if (t[ti] === q[qi]) qi++;
-	}
-	return qi === q.length;
-}
-
-function scoreFuzzyMatch(query: string, target: string): number {
-	const q = query.toLowerCase();
-	const t = target.toLowerCase();
-
-	// Exact match
 	if (t === q) return 100;
-
-	// Starts with
 	if (t.startsWith(q)) return 90;
 
-	// Contains as substring
 	const idx = t.indexOf(q);
 	if (idx >= 0) return 80 - idx;
 
-	// Fuzzy match score
+	// Character-by-character fuzzy
 	let qi = 0;
 	let score = 0;
 	let prevMatch = -1;
 	for (let ti = 0; ti < t.length && qi < q.length; ti++) {
 		if (t[ti] === q[qi]) {
 			score += 10;
-			// Bonus for consecutive matches
 			if (prevMatch === ti - 1) score += 5;
-			// Bonus for matching after separator
 			if (ti === 0 || t[ti - 1] === ".") score += 3;
 			prevMatch = ti;
 			qi++;
@@ -50,68 +29,85 @@ function scoreFuzzyMatch(query: string, target: string): number {
 	return qi === q.length ? score : -1;
 }
 
-function generateSuggestions(
+function buildSuggestions(
 	typed: string,
 	zones: Zone[],
-): Array<{ value: string; score: number }> {
-	if (!typed) {
+): Array<{ name: string; value: string; description?: string }> {
+	if (!typed.trim()) {
 		return zones.map((z) => ({
+			name: z.name,
 			value: z.name,
-			score: 50,
+			description: "type a subdomain prefix",
 		}));
 	}
 
-	const results: Array<{ value: string; score: number }> = [];
-
-	// Check if the user has typed a dot (indicating subdomain.zone pattern)
+	const results: Array<{ value: string; score: number; zone: string }> = [];
 	const dotIndex = typed.indexOf(".");
+
 	if (dotIndex >= 0) {
+		// User typed "subdomain.partial-zone" — match the zone part
 		const subdomain = typed.slice(0, dotIndex);
 		const zonePart = typed.slice(dotIndex + 1);
 
 		for (const zone of zones) {
-			if (!zonePart || fuzzyMatch(zonePart, zone.name)) {
-				const suggestion = `${subdomain}.${zone.name}`;
-				const score = scoreFuzzyMatch(zonePart || "", zone.name);
-				if (score >= 0) {
-					results.push({ value: suggestion, score });
-				}
+			const score = zonePart ? fuzzyScore(zonePart, zone.name) : 50;
+			if (score >= 0) {
+				results.push({
+					value: `${subdomain}.${zone.name}`,
+					score,
+					zone: zone.name,
+				});
 			}
 		}
 	} else {
-		// No dot yet — show <typed>.<zone> for all zones
+		// No dot yet — show typed.<zone> for each zone
 		for (const zone of zones) {
 			results.push({
 				value: `${typed}.${zone.name}`,
 				score: 50,
+				zone: zone.name,
 			});
 		}
 	}
 
-	return results.sort((a, b) => b.score - a.score);
+	results.sort((a, b) => b.score - a.score);
+
+	return results.map((r) => ({
+		name: r.value,
+		value: r.value,
+		description: r.zone,
+	}));
 }
 
-export async function promptDomain(zones: Zone[]): Promise<string> {
+export async function promptDomainWithAutocomplete(
+	zones: Zone[],
+): Promise<string> {
 	const zoneNames = zones.map((z) => z.name);
 
-	const domain = await input({
+	console.log(
+		chalk.dim(
+			`  Your zones: ${zones.map((z) => chalk.cyan(z.name)).join(chalk.dim(", "))}`,
+		),
+	);
+
+	const domain = await search({
 		message: "Domain",
-		transformer: (value: string) => {
-			if (!value) return chalk.dim("subdomain.yourdomain.com");
-			return value;
+		source: (term) => {
+			const typed = term ?? "";
+			return buildSuggestions(typed, zones);
 		},
-		validate: (value: string) => {
+		validate: (value) => {
 			if (!value) return "Domain is required";
 
 			const dotIndex = value.indexOf(".");
 			if (dotIndex < 0) return "Enter a full domain (e.g. app.example.com)";
 
 			const zonePart = value.slice(dotIndex + 1);
-			const matchedZone = zoneNames.find(
+			const matched = zoneNames.find(
 				(z) => z === zonePart || zonePart.endsWith(z),
 			);
-			if (!matchedZone) {
-				return `Zone not found. Available: ${zoneNames.join(", ")}`;
+			if (!matched) {
+				return `Zone "${zonePart}" not found in your account`;
 			}
 
 			return true;
@@ -119,17 +115,4 @@ export async function promptDomain(zones: Zone[]): Promise<string> {
 	});
 
 	return domain;
-}
-
-export async function promptDomainWithAutocomplete(
-	zones: Zone[],
-): Promise<string> {
-	// Show available zones upfront
-	console.log(
-		chalk.dim(
-			`  Available zones: ${zones.map((z) => chalk.cyan(z.name)).join(", ")}`,
-		),
-	);
-
-	return promptDomain(zones);
 }
