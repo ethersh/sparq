@@ -87,10 +87,10 @@ export async function rmCommand(hostname: string): Promise<void> {
 	await generateCloudflaredConfig(config);
 
 	// Restart if running
-	if (await isTunnelRunning()) {
-		await stopTunnel();
+	if (await isTunnelRunning(config.tunnel_id)) {
+		await stopTunnel(config.tunnel_id);
 		if (config.routes.length > 0) {
-			await startTunnel();
+			await startTunnel(config.tunnel_id);
 			printSuccess("Tunnel restarted");
 		} else {
 			printSuccess("Tunnel stopped (no routes)");
@@ -99,6 +99,6 @@ export async function rmCommand(hostname: string): Promise<void> {
 
 	console.log();
 	if (config.routes.length > 0) {
-		printRoutes(config.routes, await isTunnelRunning());
+		printRoutes(config.routes, await isTunnelRunning(config.tunnel_id));
 	}
 }

@@ -101,12 +101,12 @@ export async function addCommand(): Promise<void> {
 	});
 	await generateCloudflaredConfig(config);
 
-	if (await isTunnelRunning()) {
-		await stopTunnel();
-		const pid = await startTunnel();
+	if (await isTunnelRunning(config.tunnel_id)) {
+		await stopTunnel(config.tunnel_id);
+		const pid = await startTunnel(config.tunnel_id);
 		printSuccess(`Tunnel restarted (PID: ${pid})`);
 	}
 
 	console.log();
-	printRoutes(config.routes, await isTunnelRunning());
+	printRoutes(config.routes, await isTunnelRunning(config.tunnel_id));
 }

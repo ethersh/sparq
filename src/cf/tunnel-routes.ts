@@ -34,6 +34,29 @@ export async function routeTunnelDns(
 }
 
 /**
+ * List tunnels using the cert.pem token.
+ */
+export async function listTunnelsWithCert(
+	token: string,
+	accountId: string,
+	name?: string,
+): Promise<Array<{ id: string; name: string; status: string }>> {
+	const params: Record<string, any> = { is_deleted: false, per_page: 100 };
+	if (name) params.name = name;
+	const res = await axios.get(
+		`${CF_API}/accounts/${accountId}/cfd_tunnel`,
+		{
+			params,
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: "application/json;version=1",
+			},
+		},
+	);
+	return res.data.result;
+}
+
+/**
  * Create a tunnel using the cert.pem token.
  * Uses /accounts/{accountID}/cfd_tunnel — same as cloudflared.
  */

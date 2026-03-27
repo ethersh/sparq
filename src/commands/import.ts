@@ -6,7 +6,11 @@ import {
 	isConfigured,
 	ensureProjectDir,
 	getProjectSparqDir,
+	getProjectConfig,
+	saveCredentials,
 } from "../config/project.js";
+import { ProjectConfigSchema, TunnelCredentialsSchema } from "../config/schema.js";
+import { generateCloudflaredConfig } from "../tunnel/config-gen.js";
 import {
 	printBanner,
 	printSuccess,
@@ -43,19 +47,33 @@ export async function importCommand(sourcePath?: string): Promise<void> {
 		return;
 	}
 
+	// Copy config.json to project .sparq/
 	await ensureProjectDir();
 	const destDir = getProjectSparqDir();
+	const configContent = await readFile(join(sourceDir, "config.json"), "utf-8");
+	await writeFile(join(destDir, "config.json"), configContent, "utf-8");
 
-	// Copy config, credentials, and cloudflared config
-	const filesToCopy = ["config.json", "credentials.json", "cloudflared.yml"];
+	// Read the config to get tunnel_id for credential storage
+	const config = await getProjectConfig();
+	if (!config) {
+		printError("Imported config is invalid.");
+		return;
+	}
 
-	for (const file of filesToCopy) {
-		const srcFile = join(sourceDir, file);
-		if (existsSync(srcFile)) {
-			const content = await readFile(srcFile, "utf-8");
-			await writeFile(join(destDir, file), content, "utf-8");
+	// Copy credentials to ~/.sparq/tunnels/<tunnel_id>/
+	const credsFile = join(sourceDir, "credentials.json");
+	if (existsSync(credsFile)) {
+		try {
+			const credsRaw = await readFile(credsFile, "utf-8");
+			const creds = TunnelCredentialsSchema.parse(JSON.parse(credsRaw));
+			await saveCredentials(creds, config.tunnel_id);
+		} catch {
+			printDim("Warning: could not import credentials.json");
 		}
 	}
+
+	// Regenerate cloudflared.yml with correct paths
+	await generateCloudflaredConfig(config);
 
 	printSuccess(`Imported tunnel config from ${source}`);
 	printDim("Run `sparq` to start the tunnel.");

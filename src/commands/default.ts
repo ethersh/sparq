@@ -26,7 +26,7 @@ export async function defaultCommand(): Promise<void> {
 
 	printBanner();
 
-	if (await isTunnelRunning()) {
+	if (await isTunnelRunning(config.tunnel_id)) {
 		printRoutes(config.routes, true);
 		printHint("Run `sparq down` to stop.");
 		console.log();
@@ -38,7 +38,7 @@ export async function defaultCommand(): Promise<void> {
 
 	const spinner = yoctoSpinner({ text: "Starting tunnel..." }).start();
 	try {
-		const pid = await startTunnel();
+		const pid = await startTunnel(config.tunnel_id);
 		spinner.success(`Tunnel running (PID: ${pid})`);
 	} catch (err: any) {
 		spinner.error("Failed to start tunnel");

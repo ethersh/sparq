@@ -8,6 +8,8 @@ import { listZones, extractZoneFromHostname } from "../cf/zones.js";
 import {
 	routeTunnelDns,
 	createTunnelWithCert,
+	listTunnelsWithCert,
+	deleteTunnelWithCert,
 } from "../cf/tunnel-routes.js";
 import { generateCloudflaredConfig } from "../tunnel/config-gen.js";
 import { startTunnel } from "../tunnel/daemon.js";
@@ -117,8 +119,8 @@ export async function runSetupWizard(): Promise<void> {
 		.replace(/[^a-z0-9-]/g, "-")
 		.replace(/-+/g, "-")
 		.replace(/^-|-$/g, "");
-	const tunnelName = `sparq-${dirName || "tunnel"}`;
-	const tunnelSecret = randomBytes(32).toString("base64");
+	let tunnelName = `sparq-${dirName || "tunnel"}`;
+	let tunnelSecret = randomBytes(32).toString("base64");
 
 	const tunnelSpinner = yoctoSpinner({
 		text: `Creating tunnel "${tunnelName}"...`,
@@ -134,9 +136,77 @@ export async function runSetupWizard(): Promise<void> {
 		);
 		tunnelSpinner.success(`Tunnel "${tunnelName}" created`);
 	} catch (err: any) {
-		tunnelSpinner.error("Failed to create tunnel");
-		printError(err.message);
-		process.exit(1);
+		const is409 = err.response?.status === 409;
+		if (!is409) {
+			tunnelSpinner.error("Failed to create tunnel");
+			printError(err.message);
+			process.exit(1);
+		}
+
+		// Tunnel name already exists — ask to reuse or pick a new name
+		tunnelSpinner.warning(`Tunnel "${tunnelName}" already exists`);
+
+		const reuse = await confirm({
+			message: `Reuse existing tunnel "${tunnelName}"?`,
+			default: true,
+		});
+
+		if (reuse) {
+			const existing = await listTunnelsWithCert(
+				cert.apiToken,
+				cert.accountID,
+				tunnelName,
+			);
+			const match = existing.find((t) => t.name === tunnelName);
+			if (!match) {
+				printError("Could not find the existing tunnel. Try a different name.");
+				process.exit(1);
+			}
+
+			// Delete and recreate so we have a fresh secret
+			const recreateSpinner = yoctoSpinner({
+				text: `Recreating tunnel "${tunnelName}"...`,
+			}).start();
+			try {
+				await deleteTunnelWithCert(cert.apiToken, cert.accountID, match.id);
+				tunnel = await createTunnelWithCert(
+					cert.apiToken,
+					cert.accountID,
+					tunnelName,
+					tunnelSecret,
+				);
+				recreateSpinner.success(`Tunnel "${tunnelName}" recreated`);
+			} catch (recreateErr: any) {
+				recreateSpinner.error("Failed to recreate tunnel");
+				printError(recreateErr.response?.data?.errors?.[0]?.message ?? recreateErr.message);
+				process.exit(1);
+			}
+		} else {
+			const newName = await input({
+				message: "Tunnel name",
+				default: `${tunnelName}-${Date.now().toString(36).slice(-4)}`,
+				validate: (val) => (val.trim() ? true : "Name is required"),
+			});
+			tunnelName = newName.trim();
+			tunnelSecret = randomBytes(32).toString("base64");
+
+			const retrySpinner = yoctoSpinner({
+				text: `Creating tunnel "${tunnelName}"...`,
+			}).start();
+			try {
+				tunnel = await createTunnelWithCert(
+					cert.apiToken,
+					cert.accountID,
+					tunnelName,
+					tunnelSecret,
+				);
+				retrySpinner.success(`Tunnel "${tunnelName}" created`);
+			} catch (retryErr: any) {
+				retrySpinner.error("Failed to create tunnel");
+				printError(retryErr.response?.data?.errors?.[0]?.message ?? retryErr.message);
+				process.exit(1);
+			}
+		}
 	}
 
 	const credentials: TunnelCredentials = {
@@ -181,7 +251,7 @@ export async function runSetupWizard(): Promise<void> {
 	};
 
 	await saveProjectConfig(config);
-	await saveCredentials(credentials);
+	await saveCredentials(credentials, tunnel.id);
 	await registerTunnel({
 		path: process.cwd(),
 		tunnel_id: tunnel.id,
@@ -194,7 +264,7 @@ export async function runSetupWizard(): Promise<void> {
 
 	const pidSpinner = yoctoSpinner({ text: "Starting tunnel..." }).start();
 	try {
-		const pid = await startTunnel();
+		const pid = await startTunnel(tunnel.id);
 		pidSpinner.success(`Tunnel running (PID: ${pid})`);
 	} catch (err: any) {
 		pidSpinner.error("Failed to start tunnel");

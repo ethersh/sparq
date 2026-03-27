@@ -19,8 +19,8 @@ export async function statusCommand(): Promise<void> {
 		return;
 	}
 
-	const running = await isTunnelRunning();
-	const pid = await getTunnelPid();
+	const running = await isTunnelRunning(config.tunnel_id);
+	const pid = await getTunnelPid(config.tunnel_id);
 
 	printRoutes(config.routes, running);
 

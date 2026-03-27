@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
 import chalk from "chalk";
-import { isConfigured, getLogPath } from "../config/project.js";
-import { printBanner, printDim } from "../ui/format.js";
+import { isConfigured, getProjectConfig, getLogPath } from "../config/project.js";
+import { printBanner, printDim, printError } from "../ui/format.js";
 
 export async function logsCommand(opts: { follow: boolean }): Promise<void> {
 	if (!isConfigured()) {
@@ -12,7 +12,14 @@ export async function logsCommand(opts: { follow: boolean }): Promise<void> {
 		return;
 	}
 
-	const logFile = getLogPath();
+	const config = await getProjectConfig();
+	if (!config) {
+		printBanner();
+		printError("Config file is corrupt.");
+		return;
+	}
+
+	const logFile = getLogPath(config.tunnel_id);
 
 	if (!existsSync(logFile)) {
 		printBanner();

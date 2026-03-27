@@ -16,21 +16,24 @@ export async function downCommand(): Promise<void> {
 		return;
 	}
 
-	if (!(await isTunnelRunning())) {
+	const config = await getProjectConfig();
+	if (!config) {
+		printError("Config file is corrupt.");
+		return;
+	}
+
+	if (!(await isTunnelRunning(config.tunnel_id))) {
 		printDim("Tunnel is not running.");
 		return;
 	}
 
-	const config = await getProjectConfig();
-	const stopped = await stopTunnel();
+	const stopped = await stopTunnel(config.tunnel_id);
 
 	if (stopped) {
 		printSuccess("Tunnel stopped");
-		if (config) {
-			printDim("DNS records preserved. Run `sparq` to start again.");
-			console.log();
-			printRoutes(config.routes, false);
-		}
+		printDim("DNS records preserved. Run `sparq` to start again.");
+		console.log();
+		printRoutes(config.routes, false);
 	} else {
 		printError("Failed to stop tunnel");
 	}
