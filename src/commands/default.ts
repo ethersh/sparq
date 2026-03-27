@@ -2,12 +2,15 @@ import chalk from "chalk";
 import { isConfigured, getProjectConfig } from "../config/project.js";
 import { isTunnelRunning, startTunnel } from "../tunnel/daemon.js";
 import { generateCloudflaredConfig } from "../tunnel/config-gen.js";
+import { ensureCloudflared } from "../deps/ensure.js";
 import { runSetupWizard } from "../ui/setup-wizard.js";
 import {
 	printBanner,
 	printRoutes,
 	printSuccess,
 	printError,
+	printDim,
+	printHint,
 } from "../ui/format.js";
 import yoctoSpinner from "yocto-spinner";
 
@@ -30,10 +33,14 @@ export async function defaultCommand(): Promise<void> {
 	// Check if already running
 	if (await isTunnelRunning()) {
 		printRoutes(config.routes, true);
-		console.log(chalk.dim("  Tunnel is already running."));
-		console.log(chalk.dim("  Run `sparq down` to stop.\n"));
+		printDim("Tunnel is already running.");
+		printHint("Run `sparq down` to stop.");
+		console.log();
 		return;
 	}
+
+	// Ensure cloudflared is available
+	await ensureCloudflared();
 
 	// Generate config and start
 	await generateCloudflaredConfig(config);
@@ -50,4 +57,6 @@ export async function defaultCommand(): Promise<void> {
 
 	console.log();
 	printRoutes(config.routes, true);
+	printHint("Run `sparq logs -f` to watch logs, `sparq down` to stop.");
+	console.log();
 }

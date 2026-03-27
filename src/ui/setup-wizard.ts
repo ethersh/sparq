@@ -113,7 +113,12 @@ export async function runSetupWizard(): Promise<void> {
 
 	// Step 5: Create tunnel
 	console.log();
-	const tunnelName = `sparq-${basename(process.cwd())}`;
+	const dirName = basename(process.cwd())
+		.toLowerCase()
+		.replace(/[^a-z0-9-]/g, "-")
+		.replace(/-+/g, "-")
+		.replace(/^-|-$/g, "");
+	const tunnelName = `sparq-${dirName || "tunnel"}`;
 	const tunnelSpinner = yoctoSpinner({
 		text: `Creating tunnel "${tunnelName}"...`,
 	}).start();
