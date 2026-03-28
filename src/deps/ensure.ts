@@ -1,21 +1,25 @@
 import { execSync } from "node:child_process";
-import { arch } from "node:os";
+import { arch, tmpdir } from "node:os";
+import path from "node:path";
 import chalk from "chalk";
 import yoctoSpinner from "yocto-spinner";
 
+const isWindows = process.platform === "win32";
+
 function commandExists(cmd: string): boolean {
 	try {
-		execSync(`which ${cmd}`, { stdio: "ignore" });
+		execSync(isWindows ? `where ${cmd}` : `which ${cmd}`, { stdio: "ignore" });
 		return true;
 	} catch {
 		return false;
 	}
 }
 
-function detectPlatform(): "macos" | "linux" | "unsupported" {
+function detectPlatform(): "macos" | "linux" | "windows" | "unsupported" {
 	const platform = process.platform;
 	if (platform === "darwin") return "macos";
 	if (platform === "linux") return "linux";
+	if (platform === "win32") return "windows";
 	return "unsupported";
 }
 
@@ -42,6 +46,26 @@ async function installCloudflared(): Promise<void> {
 					`curl -L --output /usr/local/bin/cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${linuxArch} && chmod +x /usr/local/bin/cloudflared`,
 					{ stdio: "ignore", timeout: 120000 },
 				);
+			}
+		} else if (platform === "windows") {
+			const winArch = arch() === "arm64" ? "arm64" : "amd64";
+			const msiPath = path.join(tmpdir(), "cloudflared.msi");
+			try {
+				// Try winget first
+				execSync("winget install --id Cloudflare.cloudflared --accept-source-agreements --accept-package-agreements", {
+					stdio: "ignore",
+					timeout: 120000,
+				});
+			} catch {
+				// Fall back to downloading the .msi
+				execSync(
+					`powershell -Command "Invoke-WebRequest -Uri 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-${winArch}.msi' -OutFile '${msiPath}'"`,
+					{ stdio: "ignore", timeout: 120000 },
+				);
+				execSync(`msiexec /i "${msiPath}" /quiet /norestart`, {
+					stdio: "ignore",
+					timeout: 120000,
+				});
 			}
 		} else {
 			spinner.error("Unsupported platform");

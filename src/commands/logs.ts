@@ -1,5 +1,5 @@
-import { readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { readFile, open } from "node:fs/promises";
+import { existsSync, watchFile, unwatchFile, statSync } from "node:fs";
 import { spawn } from "node:child_process";
 import chalk from "chalk";
 import { isConfigured, getProjectConfig, getLogPath } from "../config/project.js";
@@ -28,19 +28,35 @@ export async function logsCommand(opts: { follow: boolean }): Promise<void> {
 	}
 
 	if (opts.follow) {
-		// Tail -f style
-		const child = spawn("tail", ["-f", logFile], {
-			stdio: "inherit",
+		// Cross-platform tail -f using Node.js fs
+		let position = statSync(logFile).size;
+
+		const printNewContent = async () => {
+			const fh = await open(logFile, "r");
+			const { size } = await fh.stat();
+			if (size > position) {
+				const buf = Buffer.alloc(size - position);
+				await fh.read(buf, 0, buf.length, position);
+				process.stdout.write(buf.toString("utf-8"));
+				position = size;
+			}
+			await fh.close();
+		};
+
+		watchFile(logFile, { interval: 200 }, () => {
+			printNewContent().catch(() => {});
 		});
 
 		process.on("SIGINT", () => {
-			child.kill();
+			unwatchFile(logFile);
 			process.exit(0);
 		});
 
-		await new Promise<void>((resolve) => {
-			child.on("close", () => resolve());
-		});
+		// Print any existing tail content first
+		await printNewContent();
+
+		// Keep alive
+		await new Promise<void>(() => {});
 	} else {
 		const content = await readFile(logFile, "utf-8");
 		const trimmed = content.trim();

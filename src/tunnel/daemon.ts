@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { openSync, closeSync } from "node:fs";
 import {
 	savePid,
@@ -8,8 +8,14 @@ import {
 	getLogPath,
 } from "../config/project.js";
 
+const isWindows = process.platform === "win32";
+
 export function isProcessRunning(pid: number): boolean {
 	try {
+		if (isWindows) {
+			const result = execSync(`tasklist /FI "PID eq ${pid}" /NH`, { encoding: "utf-8" });
+			return result.includes(String(pid));
+		}
 		process.kill(pid, 0);
 		return true;
 	} catch {
@@ -62,11 +68,15 @@ export async function stopTunnel(tunnelId: string): Promise<boolean> {
 	}
 
 	try {
-		process.kill(pid, "SIGTERM");
-		// Give it a moment to shut down gracefully
-		await new Promise((resolve) => setTimeout(resolve, 1000));
-		if (isProcessRunning(pid)) {
-			process.kill(pid, "SIGKILL");
+		if (isWindows) {
+			execSync(`taskkill /PID ${pid} /T /F`, { stdio: "ignore" });
+		} else {
+			process.kill(pid, "SIGTERM");
+			// Give it a moment to shut down gracefully
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			if (isProcessRunning(pid)) {
+				process.kill(pid, "SIGKILL");
+			}
 		}
 	} catch {
 		// Process already gone
