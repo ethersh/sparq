@@ -22,7 +22,7 @@ export async function generateCloudflaredConfig(
 	const ingress = config.routes
 		.map(
 			(r) =>
-				`  - hostname: ${r.hostname}\n    service: ${r.protocol}://localhost:${r.port}`,
+				`  - hostname: ${JSON.stringify(r.hostname)}\n    service: ${r.protocol}://localhost:${r.port}`,
 		)
 		.join("\n");
 

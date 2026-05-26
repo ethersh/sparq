@@ -23,10 +23,24 @@ export function isProcessRunning(pid: number): boolean {
 	}
 }
 
+/** Check that the PID belongs to a cloudflared process, not a recycled PID */
+function isCloudflaredProcess(pid: number): boolean {
+	try {
+		if (isWindows) {
+			const result = execSync(`tasklist /FI "PID eq ${pid}" /NH`, { encoding: "utf-8" });
+			return result.toLowerCase().includes("cloudflared");
+		}
+		const comm = execSync(`ps -p ${pid} -o comm=`, { encoding: "utf-8" }).trim();
+		return comm.includes("cloudflared");
+	} catch {
+		return false;
+	}
+}
+
 export async function isTunnelRunning(tunnelId: string): Promise<boolean> {
 	const pid = await getPid(tunnelId);
 	if (!pid) return false;
-	if (!isProcessRunning(pid)) {
+	if (!isProcessRunning(pid) || !isCloudflaredProcess(pid)) {
 		await clearPid(tunnelId);
 		return false;
 	}
@@ -89,7 +103,7 @@ export async function stopTunnel(tunnelId: string): Promise<boolean> {
 export async function getTunnelPid(tunnelId: string): Promise<number | null> {
 	const pid = await getPid(tunnelId);
 	if (!pid) return null;
-	if (!isProcessRunning(pid)) {
+	if (!isProcessRunning(pid) || !isCloudflaredProcess(pid)) {
 		await clearPid(tunnelId);
 		return null;
 	}

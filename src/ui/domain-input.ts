@@ -12,7 +12,6 @@ function fuzzyScore(query: string, target: string): number {
 	const idx = t.indexOf(q);
 	if (idx >= 0) return Math.max(1, 80 - idx);
 
-	// Character-by-character fuzzy
 	let qi = 0;
 	let score = 0;
 	let prevMatch = -1;
@@ -29,124 +28,107 @@ function fuzzyScore(query: string, target: string): number {
 	return qi === q.length ? score : -1;
 }
 
+/**
+ * Given a typed hostname and the set of zones, return the longest zone that
+ * is either equal to the hostname (apex) or a suffix (subdomain or wildcard).
+ */
+function matchZone(hostname: string, zones: Zone[]): Zone | null {
+	const sorted = [...zones].sort((a, b) => b.name.length - a.name.length);
+	return (
+		sorted.find(
+			(z) => hostname === z.name || hostname.endsWith(`.${z.name}`),
+		) ?? null
+	);
+}
+
 function buildSuggestions(
 	typed: string,
 	zones: Zone[],
 ): Array<{ name: string; value: string; description?: string }> {
-	// Nothing typed yet — show hint, no suggestions
 	if (!typed.trim()) {
-		return [
-			{
-				name: chalk.dim("Type a domain (e.g. api.example.com)"),
-				value: "",
-				description: "",
-			},
-		];
+		// Nothing typed — offer each zone as an apex suggestion.
+		return zones.map((z) => ({
+			name: z.name,
+			value: z.name,
+			description: "apex",
+		}));
 	}
 
-	const dotIndex = typed.indexOf(".");
-
-	// No dot yet — user is still typing subdomain, don't autocomplete zones
-	if (dotIndex < 0) {
-		return [
-			{
-				name: chalk.dim(`${typed}. ...`),
-				value: typed,
-				description: "type a dot to see your zones",
-			},
-		];
-	}
-
-	// Has dot — now autocomplete the zone part
-	const subdomain = typed.slice(0, dotIndex);
-	const zonePart = typed.slice(dotIndex + 1);
-
-	if (!subdomain) {
-		return [
-			{
-				name: chalk.dim("Type a subdomain before the dot"),
-				value: "",
-				description: "",
-			},
-		];
-	}
-
-	const results: Array<{ value: string; score: number; zone: string }> = [];
+	const results: Array<{ value: string; score: number; label: string }> = [];
 
 	for (const zone of zones) {
-		// If zone part is empty (just typed the dot), show all zones
-		if (!zonePart) {
-			results.push({
-				value: `${subdomain}.${zone.name}`,
-				score: 50,
-				zone: zone.name,
-			});
-			continue;
+		// Apex suggestion
+		if (zone.name === typed || zone.name.startsWith(typed)) {
+			results.push({ value: zone.name, score: 100, label: "apex" });
 		}
 
-		// Fuzzy match the zone part
-		const score = fuzzyScore(zonePart, zone.name);
-		if (score >= 0) {
-			results.push({
-				value: `${subdomain}.${zone.name}`,
-				score,
-				zone: zone.name,
-			});
+		// Wildcard suggestion
+		const wildcard = `*.${zone.name}`;
+		if (wildcard.startsWith(typed)) {
+			results.push({ value: wildcard, score: 70, label: "wildcard" });
+		}
+
+		// Subdomain suggestions — only when a dot is present
+		const dotIndex = typed.indexOf(".");
+		if (dotIndex > 0) {
+			const subdomain = typed.slice(0, dotIndex);
+			const zonePart = typed.slice(dotIndex + 1);
+			const subValue = `${subdomain}.${zone.name}`;
+			const score = zonePart ? fuzzyScore(zonePart, zone.name) : 60;
+			if (score >= 0 && subValue !== zone.name) {
+				results.push({ value: subValue, score, label: "subdomain" });
+			}
 		}
 	}
 
-	results.sort((a, b) => b.score - a.score);
-
-	// If the user typed something that exactly matches (subdomain.zone), put it first
-	const exactMatch = results.find((r) => r.value === typed);
-	if (!exactMatch && zonePart) {
-		// Allow custom domain even if zone doesn't match perfectly
-		// (they might be typing it out)
+	// If user typed a full apex or a subdomain that matches a zone, surface it.
+	if (matchZone(typed, zones)) {
+		results.unshift({ value: typed, score: 200, label: "use as typed" });
 	}
 
-	if (results.length === 0) {
+	// Dedupe by value, keeping highest score
+	const seen = new Map<string, { value: string; score: number; label: string }>();
+	for (const r of results) {
+		const prev = seen.get(r.value);
+		if (!prev || r.score > prev.score) seen.set(r.value, r);
+	}
+
+	const out = [...seen.values()].sort((a, b) => b.score - a.score);
+
+	if (out.length === 0) {
 		return [
 			{
-				name: chalk.dim(`No matching zones for "${zonePart}"`),
+				name: chalk.dim(`No matching zones for "${typed}"`),
 				value: typed,
 				description: "",
 			},
 		];
 	}
 
-	return results.map((r) => ({
+	return out.map((r) => ({
 		name: r.value,
 		value: r.value,
+		description: r.label,
 	}));
 }
 
 export async function promptDomainWithAutocomplete(
 	zones: Zone[],
 ): Promise<string> {
-	const zoneNames = zones.map((z) => z.name);
-
 	const domain = await search({
 		message: "Domain",
-		source: (term) => {
-			return buildSuggestions(term ?? "", zones);
-		},
+		source: (term) => buildSuggestions(term ?? "", zones),
 		validate: (value) => {
 			if (!value) return "Domain is required";
 
-			const dotIndex = value.indexOf(".");
-			if (dotIndex < 0) return "Enter a full domain (e.g. app.example.com)";
+			const zone = matchZone(value, zones);
+			if (!zone) {
+				return `No zone in your account covers "${value}"`;
+			}
 
-			const subdomain = value.slice(0, dotIndex);
-			if (!subdomain) return "Enter a subdomain before the dot";
-
-			const zonePart = value.slice(dotIndex + 1);
-			if (!zonePart) return "Enter a zone after the dot";
-
-			const matched = zoneNames.find(
-				(z) => z === zonePart || zonePart.endsWith(z),
-			);
-			if (!matched) {
-				return `Zone "${zonePart}" not found in your account`;
+			// Reject trailing dot, whitespace, empty labels
+			if (value.startsWith(".") || value.endsWith(".") || value.includes("..")) {
+				return "Invalid hostname format";
 			}
 
 			return true;

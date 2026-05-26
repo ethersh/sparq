@@ -8,7 +8,8 @@ let clientInstance: AxiosInstance | null = null;
 export async function getCfClient(): Promise<AxiosInstance> {
 	if (clientInstance) return clientInstance;
 
-	const auth = await getAuth();
+	const envToken = process.env.CLOUDFLARE_API_TOKEN ?? process.env.CF_API_TOKEN;
+	const auth = envToken ? { api_token: envToken } : await getAuth();
 	if (!auth) {
 		throw new Error("Not authenticated. Run `sparq login` first.");
 	}
