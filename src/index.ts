@@ -140,13 +140,13 @@ program
 program
 	.command("up")
 	.description("Start the tunnel (alias for default)")
-	.option("--headless", "Non-interactive mode (no prompts)")
-	.option("--domain <domain>", "Parent domain (e.g. t.useautumn.com)")
-	.option("--seed <seed>", "Subdomain prefix (e.g. amir-wt1). Random if omitted")
-	.option("--route <routes...>", "Routes as label:port or port (e.g. api:3000 web:5173)")
-	.option("--json", "Output JSON instead of human-readable text")
 	.action(
-		withErrorHandler(async (opts) => {
+		withErrorHandler(async () => {
+			// Options (--headless, --domain, --seed, --route, --json) are declared
+			// on the parent program and inherited here. Declaring them again on the
+			// subcommand causes commander to leave subcommand opts empty when the
+			// flag appears after the subcommand name.
+			const opts = program.opts();
 			if (opts.headless) {
 				validateHeadlessOpts(opts);
 				await headlessUp(opts);
