@@ -23,6 +23,22 @@ const CF_API = "https://api.cloudflare.com/client/v4";
  * Both are browser-based, both are one-time.
  */
 
+// ─── Env-based headless auth ───
+
+function getEnvAuth(): AuthToken | null {
+	const token = process.env.CLOUDFLARE_API_TOKEN ?? process.env.CF_API_TOKEN;
+	const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? process.env.CF_ACCOUNT_ID;
+	if (!token || !accountId) return null;
+	return { api_token: token, account_id: accountId };
+}
+
+function getEnvCert(): OriginCert | null {
+	const token = process.env.CLOUDFLARE_TUNNEL_TOKEN ?? process.env.CF_TUNNEL_TOKEN;
+	const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? process.env.CF_ACCOUNT_ID;
+	if (!token || !accountId) return null;
+	return { zoneID: "", accountID: accountId, apiToken: token };
+}
+
 // ─── OAuth (zones + user info) ───
 
 async function verifyOAuthToken(
@@ -50,6 +66,10 @@ async function verifyOAuthToken(
 }
 
 export async function ensureAuth(): Promise<AuthToken> {
+	// Env vars take priority — no browser needed
+	const envAuth = getEnvAuth();
+	if (envAuth) return envAuth;
+
 	// Check stored OAuth token
 	const existing = await getStoredToken();
 	if (existing?.api_token) {
@@ -140,6 +160,10 @@ export async function ensureAuth(): Promise<AuthToken> {
 // ─── cloudflared cert.pem (tunnels + DNS routing) ───
 
 export async function ensureTunnelAuth(): Promise<OriginCert> {
+	// Env vars take priority — no browser or cert.pem needed
+	const envCert = getEnvCert();
+	if (envCert) return envCert;
+
 	// Check for existing cert.pem
 	if (certExists()) {
 		try {
