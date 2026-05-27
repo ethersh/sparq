@@ -1,7 +1,7 @@
-import { input, confirm } from "@inquirer/prompts";
+import { input, confirm } from "./prompts.js";
 import { randomBytes } from "node:crypto";
-import chalk from "chalk";
-import yoctoSpinner from "yocto-spinner";
+import chalk from "./color.js";
+import yoctoSpinner from "./spinner.js";
 import { ensureAuth, ensureTunnelAuth } from "../auth/ensure.js";
 import { ensureCloudflared } from "../deps/ensure.js";
 import { listZones, extractZoneFromHostname } from "../cf/zones.js";

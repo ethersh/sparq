@@ -10,7 +10,7 @@ import {
 	printDim,
 	printHint,
 } from "../ui/format.js";
-import yoctoSpinner from "yocto-spinner";
+import yoctoSpinner from "../ui/spinner.js";
 
 export async function defaultCommand(): Promise<void> {
 	if (!isConfigured()) {

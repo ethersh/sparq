@@ -1,5 +1,5 @@
-import { confirm } from "@inquirer/prompts";
-import yoctoSpinner from "yocto-spinner";
+import { confirm } from "../ui/prompts.js";
+import yoctoSpinner from "../ui/spinner.js";
 import { isConfigured, getProjectConfig, saveProjectConfig } from "../config/project.js";
 import { ensureAuth, ensureTunnelAuth } from "../auth/ensure.js";
 import { listZones, extractZoneFromHostname } from "../cf/zones.js";

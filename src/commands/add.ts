@@ -1,6 +1,6 @@
-import { input, confirm } from "@inquirer/prompts";
-import chalk from "chalk";
-import yoctoSpinner from "yocto-spinner";
+import { input, confirm } from "../ui/prompts.js";
+import chalk from "../ui/color.js";
+import yoctoSpinner from "../ui/spinner.js";
 import { isConfigured, getProjectConfig, saveProjectConfig } from "../config/project.js";
 import { ensureAuth, ensureTunnelAuth } from "../auth/ensure.js";
 import { listZones, extractZoneFromHostname } from "../cf/zones.js";

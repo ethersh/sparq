@@ -1,5 +1,5 @@
-import { search } from "@inquirer/prompts";
-import chalk from "chalk";
+import { search } from "./prompts.js";
+import chalk from "./color.js";
 import type { Zone } from "../cf/zones.js";
 
 function fuzzyScore(query: string, target: string): number {

@@ -1,8 +1,8 @@
 import { execSync } from "node:child_process";
 import { arch, tmpdir } from "node:os";
 import path from "node:path";
-import chalk from "chalk";
-import yoctoSpinner from "yocto-spinner";
+import chalk from "../ui/color.js";
+import yoctoSpinner from "../ui/spinner.js";
 
 const isWindows = process.platform === "win32";
 

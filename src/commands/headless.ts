@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import yoctoSpinner from "yocto-spinner";
+import yoctoSpinner from "../ui/spinner.js";
 import { ensureAuth, ensureTunnelAuth } from "../auth/ensure.js";
 import { ensureCloudflared } from "../deps/ensure.js";
 import { listZones, extractZoneFromHostname } from "../cf/zones.js";
