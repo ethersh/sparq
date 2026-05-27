@@ -5,9 +5,8 @@ import {
 } from "node:http";
 import { randomBytes, createHash } from "node:crypto";
 import { URL, URLSearchParams } from "node:url";
-import open from "open";
-import chalk from "chalk";
-import axios from "axios";
+import open from "../ui/open-url.js";
+import chalk from "../ui/color.js";
 
 const CF_AUTH_URL = "https://dash.cloudflare.com/oauth2/auth";
 const CF_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
@@ -142,36 +141,38 @@ export async function runOAuthFlow(): Promise<OAuthTokens> {
 export async function refreshOAuthToken(
 	refreshToken: string,
 ): Promise<OAuthTokens> {
-	const res = await axios.post<OAuthTokens>(
-		CF_TOKEN_URL,
-		new URLSearchParams({
+	const res = await fetch(CF_TOKEN_URL, {
+		method: "POST",
+		headers: { "Content-Type": "application/x-www-form-urlencoded" },
+		body: new URLSearchParams({
 			grant_type: "refresh_token",
 			refresh_token: refreshToken,
 			client_id: CF_CLIENT_ID,
 		}).toString(),
-		{
-			headers: { "Content-Type": "application/x-www-form-urlencoded" },
-		},
-	);
-	return res.data;
+	});
+	if (!res.ok) {
+		throw new Error(`Token refresh failed: ${res.status}`);
+	}
+	return res.json() as Promise<OAuthTokens>;
 }
 
 async function exchangeCode(
 	code: string,
 	verifier: string,
 ): Promise<OAuthTokens> {
-	const res = await axios.post<OAuthTokens>(
-		CF_TOKEN_URL,
-		new URLSearchParams({
+	const res = await fetch(CF_TOKEN_URL, {
+		method: "POST",
+		headers: { "Content-Type": "application/x-www-form-urlencoded" },
+		body: new URLSearchParams({
 			grant_type: "authorization_code",
 			code,
 			redirect_uri: OAUTH_CALLBACK_URL,
 			client_id: CF_CLIENT_ID,
 			code_verifier: verifier,
 		}).toString(),
-		{
-			headers: { "Content-Type": "application/x-www-form-urlencoded" },
-		},
-	);
-	return res.data;
+	});
+	if (!res.ok) {
+		throw new Error(`Token exchange failed: ${res.status}`);
+	}
+	return res.json() as Promise<OAuthTokens>;
 }

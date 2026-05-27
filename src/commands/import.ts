@@ -1,4 +1,4 @@
-import { input } from "@inquirer/prompts";
+import { input } from "../ui/prompts.js";
 import { existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";

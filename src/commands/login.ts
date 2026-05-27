@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import chalk from "../ui/color.js";
 import { ensureAuth } from "../auth/ensure.js";
 import { printBanner, printBox, printError } from "../ui/format.js";
 

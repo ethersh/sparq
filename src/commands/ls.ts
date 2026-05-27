@@ -1,4 +1,4 @@
-import chalk from "chalk";
+import chalk from "../ui/color.js";
 import { getRegistry } from "../config/global.js";
 import { isTunnelRunning } from "../tunnel/daemon.js";
 import { printBanner, printBox, printDim } from "../ui/format.js";

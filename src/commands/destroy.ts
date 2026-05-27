@@ -1,6 +1,6 @@
-import { confirm } from "@inquirer/prompts";
-import chalk from "chalk";
-import yoctoSpinner from "yocto-spinner";
+import { confirm } from "../ui/prompts.js";
+import chalk from "../ui/color.js";
+import yoctoSpinner from "../ui/spinner.js";
 import {
 	isConfigured,
 	getProjectConfig,

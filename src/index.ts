@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { parseArgs } from "node:util";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -18,19 +18,6 @@ import { printError } from "./ui/format.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
-
-const program = new Command();
-
-function withErrorHandler(fn: (...args: any[]) => Promise<void>) {
-	return async (...args: any[]) => {
-		try {
-			await fn(...args);
-		} catch (err: any) {
-			printError(err.message);
-			process.exit(1);
-		}
-	};
-}
 
 const HEADLESS_USAGE = `
 Usage: sparq --headless --domain <domain> --route <label:port>... [--seed <seed>] [--json]
@@ -92,98 +79,115 @@ function validateHeadlessOpts(opts: any): void {
 	}
 }
 
-program
-	.name("sparq")
-	.description("Cloudflare Tunnels, simplified.")
-	.version(pkg.version)
-	.option("--headless", "Non-interactive mode (no prompts)")
-	.option("--domain <domain>", "Parent domain (e.g. t.useautumn.com)")
-	.option("--seed <seed>", "Subdomain prefix (e.g. amir-wt1). Random if omitted")
-	.option("--route <routes...>", "Routes as label:port or port (e.g. api:3000 web:5173)")
-	.option("--json", "Output JSON instead of human-readable text")
-	.action(
-		withErrorHandler(async (opts) => {
-			if (opts.headless) {
-				validateHeadlessOpts(opts);
-				await headlessUp(opts);
+const HELP = `sparq v${pkg.version} — Cloudflare Tunnels, simplified.
+
+Usage:
+  sparq                         Interactive setup & start
+  sparq up                      Start tunnel (alias for default)
+  sparq down                    Stop the tunnel
+  sparq status                  Show tunnel status
+  sparq add                     Add a new route
+  sparq rm <hostname>           Remove a route and DNS record
+  sparq ls                      List all sparq-managed tunnels
+  sparq logs [-f]               Show tunnel logs
+  sparq login                   Authenticate with Cloudflare
+  sparq import [path]           Import config from another directory
+  sparq logout                  Remove stored credentials
+  sparq destroy                 Permanently destroy tunnel
+
+Options:
+  --headless                    Non-interactive mode
+  --domain <domain>             Parent domain
+  --seed <seed>                 Subdomain prefix
+  --route <label:port>          Route (repeatable)
+  --json                        JSON output
+  -f, --follow                  Follow log output
+  -V, --version                 Show version
+  -h, --help                    Show help
+`;
+
+async function main(): Promise<void> {
+	const { values, positionals } = parseArgs({
+		options: {
+			headless: { type: "boolean", default: false },
+			domain: { type: "string" },
+			seed: { type: "string" },
+			route: { type: "string", multiple: true },
+			json: { type: "boolean", default: false },
+			follow: { type: "boolean", short: "f", default: false },
+			version: { type: "boolean", short: "V", default: false },
+			help: { type: "boolean", short: "h", default: false },
+		},
+		allowPositionals: true,
+		strict: false,
+	});
+
+	if (values.version) {
+		console.log(pkg.version);
+		return;
+	}
+
+	if (values.help) {
+		console.log(HELP);
+		return;
+	}
+
+	const command = positionals[0];
+
+	switch (command) {
+		case undefined:
+		case "up":
+			if (values.headless) {
+				validateHeadlessOpts(values);
+				await headlessUp(values as any);
 			} else {
 				await defaultCommand();
 			}
-		}),
-	);
-
-program
-	.command("down")
-	.description("Stop the tunnel for this directory")
-	.action(withErrorHandler(downCommand));
-
-program
-	.command("status")
-	.description("Show tunnel status")
-	.action(withErrorHandler(statusCommand));
-
-program
-	.command("add")
-	.description("Add a new route to the tunnel")
-	.action(withErrorHandler(addCommand));
-
-program
-	.command("rm <hostname>")
-	.description("Remove a route and its DNS record")
-	.action(withErrorHandler(rmCommand));
-
-program
-	.command("ls")
-	.description("List all sparq-managed tunnels")
-	.action(withErrorHandler(lsCommand));
-
-program
-	.command("up")
-	.description("Start the tunnel (alias for default)")
-	.option("--headless", "Non-interactive mode (no prompts)")
-	.option("--domain <domain>", "Parent domain (e.g. t.useautumn.com)")
-	.option("--seed <seed>", "Subdomain prefix (e.g. amir-wt1). Random if omitted")
-	.option("--route <routes...>", "Routes as label:port or port (e.g. api:3000 web:5173)")
-	.option("--json", "Output JSON instead of human-readable text")
-	.action(
-		withErrorHandler(async (opts) => {
-			if (opts.headless) {
-				validateHeadlessOpts(opts);
-				await headlessUp(opts);
-			} else {
-				await defaultCommand();
+			break;
+		case "down":
+			await downCommand();
+			break;
+		case "status":
+			await statusCommand();
+			break;
+		case "add":
+			await addCommand();
+			break;
+		case "rm": {
+			const hostname = positionals[1];
+			if (!hostname) {
+				printError("Usage: sparq rm <hostname>");
+				process.exit(1);
 			}
-		}),
-	);
+			await rmCommand(hostname);
+			break;
+		}
+		case "ls":
+			await lsCommand();
+			break;
+		case "logs":
+			await logsCommand({ follow: !!values.follow });
+			break;
+		case "login":
+			await loginCommand();
+			break;
+		case "import":
+			await importCommand(positionals[1]);
+			break;
+		case "logout":
+			await logoutCommand();
+			break;
+		case "destroy":
+			await destroyCommand();
+			break;
+		default:
+			console.error(`Unknown command: ${command}`);
+			console.log(HELP);
+			process.exit(1);
+	}
+}
 
-program
-	.command("logs")
-	.description("Show tunnel logs")
-	.option("-f, --follow", "Follow log output", false)
-	.action(
-		withErrorHandler(async (opts: { follow: boolean }) => {
-			await logsCommand(opts);
-		}),
-	);
-
-program
-	.command("login")
-	.description("Authenticate with Cloudflare")
-	.action(withErrorHandler(loginCommand));
-
-program
-	.command("import [path]")
-	.description("Import tunnel config from another directory (e.g. worktree)")
-	.action(withErrorHandler(importCommand));
-
-program
-	.command("logout")
-	.description("Remove stored Cloudflare credentials")
-	.action(withErrorHandler(logoutCommand));
-
-program
-	.command("destroy")
-	.description("Permanently destroy tunnel, DNS records, and all config")
-	.action(withErrorHandler(destroyCommand));
-
-program.parse();
+main().catch((err: any) => {
+	printError(err.message);
+	process.exit(1);
+});

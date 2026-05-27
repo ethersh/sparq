@@ -1,7 +1,6 @@
-import chalk from "chalk";
+import chalk, { type StyleFn } from "./color.js";
 import type { Route } from "../config/schema.js";
 
-// Brand colors
 const brand = chalk.hex("#FF8C00");
 const brandBold = chalk.hex("#FF8C00").bold;
 const success = chalk.green;
@@ -23,7 +22,7 @@ export function printBanner(): void {
 export function printBox(
 	title: string,
 	lines: string[],
-	color: typeof chalk = brand,
+	color: StyleFn = brand,
 ): void {
 	const contentWidth = Math.max(
 		title.length + 4,

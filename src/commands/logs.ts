@@ -1,7 +1,7 @@
 import { readFile, open } from "node:fs/promises";
 import { existsSync, watchFile, unwatchFile, statSync } from "node:fs";
 import { spawn } from "node:child_process";
-import chalk from "chalk";
+import chalk from "../ui/color.js";
 import { isConfigured, getProjectConfig, getLogPath } from "../config/project.js";
 import { printBanner, printDim, printError } from "../ui/format.js";
 

@@ -1,13 +1,54 @@
-import axios from "axios";
-
 const CF_API = "https://api.cloudflare.com/client/v4";
 
-/**
- * Route DNS using cloudflared's tunnel-specific endpoint.
- * This is NOT the standard /zones/{id}/dns_records endpoint.
- * It's the endpoint cloudflared itself uses: PUT /zones/{zoneID}/tunnels/{tunnelID}/routes
- * The cert.pem token has permission for this.
- */
+class HttpError extends Error {
+	response: { status: number; data: any };
+	constructor(status: number, data: any) {
+		super(data?.errors?.[0]?.message ?? `HTTP ${status}`);
+		this.response = { status, data };
+	}
+}
+
+async function request(
+	method: string,
+	url: string,
+	headers: Record<string, string>,
+	body?: any,
+	params?: Record<string, any>,
+): Promise<any> {
+	const u = new URL(url);
+	if (params) {
+		for (const [k, v] of Object.entries(params)) {
+			if (v !== undefined && v !== null) u.searchParams.set(k, String(v));
+		}
+	}
+
+	const init: RequestInit = { method, headers };
+	if (body !== undefined) {
+		init.body = JSON.stringify(body);
+	}
+
+	const res = await fetch(u, init);
+	const data = await res.json().catch(() => ({}));
+
+	if (!res.ok) {
+		throw new HttpError(res.status, data);
+	}
+
+	return data;
+}
+
+function authHeaders(
+	token: string,
+	extra?: Record<string, string>,
+): Record<string, string> {
+	return {
+		Authorization: `Bearer ${token}`,
+		"Content-Type": "application/json",
+		Accept: "application/json;version=1",
+		...extra,
+	};
+}
+
 export async function routeTunnelDns(
 	token: string,
 	zoneId: string,
@@ -15,27 +56,18 @@ export async function routeTunnelDns(
 	hostname: string,
 	overwrite: boolean = false,
 ): Promise<{ result: string }> {
-	const res = await axios.put(
+	return request(
+		"PUT",
 		`${CF_API}/zones/${zoneId}/tunnels/${tunnelId}/routes`,
+		authHeaders(token),
 		{
 			type: "dns",
 			user_hostname: hostname,
 			overwrite_existing: overwrite,
 		},
-		{
-			headers: {
-				Authorization: `Bearer ${token}`,
-				"Content-Type": "application/json",
-				Accept: "application/json;version=1",
-			},
-		},
 	);
-	return res.data;
 }
 
-/**
- * List tunnels using the cert.pem token.
- */
 export async function listTunnelsWithCert(
 	token: string,
 	accountId: string,
@@ -43,102 +75,70 @@ export async function listTunnelsWithCert(
 ): Promise<Array<{ id: string; name: string; status: string }>> {
 	const params: Record<string, any> = { is_deleted: false, per_page: 100 };
 	if (name) params.name = name;
-	const res = await axios.get(
+	const data = await request(
+		"GET",
 		`${CF_API}/accounts/${accountId}/cfd_tunnel`,
-		{
-			params,
-			headers: {
-				Authorization: `Bearer ${token}`,
-				Accept: "application/json;version=1",
-			},
-		},
+		authHeaders(token),
+		undefined,
+		params,
 	);
-	return res.data.result;
+	return data.result;
 }
 
-/**
- * Create a tunnel using the cert.pem token.
- * Uses /accounts/{accountID}/cfd_tunnel — same as cloudflared.
- */
 export async function createTunnelWithCert(
 	token: string,
 	accountId: string,
 	name: string,
 	secret: string,
 ): Promise<{ id: string; name: string }> {
-	const res = await axios.post(
+	const data = await request(
+		"POST",
 		`${CF_API}/accounts/${accountId}/cfd_tunnel`,
+		authHeaders(token),
 		{
 			name,
 			tunnel_secret: secret,
 			config_src: "local",
 		},
-		{
-			headers: {
-				Authorization: `Bearer ${token}`,
-				"Content-Type": "application/json",
-				Accept: "application/json;version=1",
-			},
-		},
 	);
-	return res.data.result;
+	return data.result;
 }
 
-/**
- * Delete a tunnel using the cert.pem token.
- */
 export async function deleteTunnelWithCert(
 	token: string,
 	accountId: string,
 	tunnelId: string,
 ): Promise<void> {
-	await axios.delete(
+	await request(
+		"DELETE",
 		`${CF_API}/accounts/${accountId}/cfd_tunnel/${tunnelId}`,
-		{
-			headers: {
-				Authorization: `Bearer ${token}`,
-				Accept: "application/json;version=1",
-			},
-		},
+		authHeaders(token),
 	);
 }
 
-/**
- * Find a CNAME DNS record for a hostname using the cert.pem token.
- */
 export async function getDnsRecordWithToken(
 	token: string,
 	zoneId: string,
 	hostname: string,
 ): Promise<{ id: string; name: string } | null> {
-	const res = await axios.get(
+	const data = await request(
+		"GET",
 		`${CF_API}/zones/${zoneId}/dns_records`,
-		{
-			params: { name: hostname, type: "CNAME" },
-			headers: {
-				Authorization: `Bearer ${token}`,
-				Accept: "application/json;version=1",
-			},
-		},
+		authHeaders(token),
+		undefined,
+		{ name: hostname, type: "CNAME" },
 	);
-	return res.data.result?.[0] ?? null;
+	return data.result?.[0] ?? null;
 }
 
-/**
- * Delete a DNS record using the cert.pem token.
- */
 export async function deleteDnsRecordWithToken(
 	token: string,
 	zoneId: string,
 	recordId: string,
 ): Promise<void> {
-	await axios.delete(
+	await request(
+		"DELETE",
 		`${CF_API}/zones/${zoneId}/dns_records/${recordId}`,
-		{
-			headers: {
-				Authorization: `Bearer ${token}`,
-				Accept: "application/json;version=1",
-			},
-		},
+		authHeaders(token),
 	);
 }
