@@ -1,7 +1,6 @@
 import { execSync } from "node:child_process";
-import chalk from "chalk";
-import axios from "axios";
-import yoctoSpinner from "yocto-spinner";
+import chalk from "../ui/color.js";
+import yoctoSpinner from "../ui/spinner.js";
 import { storeToken, getStoredToken } from "./store.js";
 import { certExists, readCert, getCertPath, type OriginCert } from "./cert.js";
 import { ensureCloudflared } from "../deps/ensure.js";
@@ -10,18 +9,6 @@ import { resetClient } from "../cf/client.js";
 import type { AuthToken } from "../config/schema.js";
 
 const CF_API = "https://api.cloudflare.com/client/v4";
-
-/**
- * Auth has two parts:
- *
- * 1. OAuth (wrangler-style) — for user info + zone listing
- *    Stored in ~/.sparq/auth.json
- *
- * 2. cloudflared cert.pem — for tunnel creation + DNS routing
- *    Lives at ~/.cloudflared/cert.pem
- *
- * Both are browser-based, both are one-time.
- */
 
 // ─── Env-based headless auth ───
 
@@ -46,14 +33,17 @@ async function verifyOAuthToken(
 ): Promise<{ email: string; accountId: string; accountName: string }> {
 	const headers = { Authorization: `Bearer ${token}` };
 
-	const userRes = await axios.get(`${CF_API}/user`, { headers });
-	const email: string = userRes.data.result.email;
+	const userRes = await fetch(`${CF_API}/user`, { headers });
+	if (!userRes.ok) throw new Error(`Failed to verify token: ${userRes.status}`);
+	const userData: any = await userRes.json();
+	const email: string = userData.result.email;
 
-	const accRes = await axios.get(`${CF_API}/accounts`, {
-		headers,
-		params: { per_page: 1 },
-	});
-	const accounts = accRes.data.result;
+	const accUrl = new URL(`${CF_API}/accounts`);
+	accUrl.searchParams.set("per_page", "1");
+	const accRes = await fetch(accUrl, { headers });
+	if (!accRes.ok) throw new Error(`Failed to fetch accounts: ${accRes.status}`);
+	const accData: any = await accRes.json();
+	const accounts = accData.result;
 	if (!accounts?.length) {
 		throw new Error("No Cloudflare accounts found.");
 	}
