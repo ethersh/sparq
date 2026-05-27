@@ -1,47 +1,145 @@
-import { z } from "zod/v4";
+export interface Route {
+	hostname: string;
+	port: number;
+	protocol: "http" | "https";
+}
 
-export const RouteSchema = z.object({
-	hostname: z.string(),
-	port: z.number().int().min(1).max(65535),
-	protocol: z.enum(["http", "https"]).default("http"),
-});
+export interface ProjectConfig {
+	tunnel_id: string;
+	tunnel_name: string;
+	account_id: string;
+	routes: Route[];
+}
 
-export const ProjectConfigSchema = z.object({
-	tunnel_id: z.string().uuid(),
-	tunnel_name: z.string(),
-	account_id: z.string(),
-	routes: z.array(RouteSchema),
-});
+export interface TunnelCredentials {
+	AccountTag: string;
+	TunnelSecret: string;
+	TunnelID: string;
+}
 
-export const TunnelCredentialsSchema = z.object({
-	AccountTag: z.string(),
-	TunnelSecret: z.string(),
-	TunnelID: z.string(),
-});
+export interface AuthToken {
+	api_token: string;
+	refresh_token?: string;
+	expires_at?: number;
+	email?: string;
+	account_id?: string;
+	account_name?: string;
+}
 
-export const AuthTokenSchema = z.object({
-	api_token: z.string(),
-	refresh_token: z.string().optional(),
-	expires_at: z.number().optional(),
-	email: z.string().email().optional(),
-	account_id: z.string().optional(),
-	account_name: z.string().optional(),
-});
+export interface TunnelRegistryEntry {
+	path: string;
+	tunnel_id: string;
+	tunnel_name: string;
+	routes: Route[];
+}
 
-export const TunnelRegistryEntrySchema = z.object({
-	path: z.string(),
-	tunnel_id: z.string().uuid(),
-	tunnel_name: z.string(),
-	routes: z.array(RouteSchema),
-});
+export interface TunnelRegistry {
+	tunnels: TunnelRegistryEntry[];
+}
 
-export const TunnelRegistrySchema = z.object({
-	tunnels: z.array(TunnelRegistryEntrySchema),
-});
+function parseRoute(data: any): Route {
+	if (
+		!data ||
+		typeof data.hostname !== "string" ||
+		typeof data.port !== "number"
+	) {
+		throw new Error("Invalid route");
+	}
+	if (data.port < 1 || data.port > 65535 || !Number.isInteger(data.port)) {
+		throw new Error("Invalid port");
+	}
+	return {
+		hostname: data.hostname,
+		port: data.port,
+		protocol: data.protocol === "https" ? "https" : "http",
+	};
+}
 
-export type Route = z.infer<typeof RouteSchema>;
-export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
-export type TunnelCredentials = z.infer<typeof TunnelCredentialsSchema>;
-export type AuthToken = z.infer<typeof AuthTokenSchema>;
-export type TunnelRegistryEntry = z.infer<typeof TunnelRegistryEntrySchema>;
-export type TunnelRegistry = z.infer<typeof TunnelRegistrySchema>;
+export const RouteSchema = { parse: parseRoute };
+
+export const ProjectConfigSchema = {
+	parse(data: any): ProjectConfig {
+		if (
+			!data ||
+			typeof data.tunnel_id !== "string" ||
+			typeof data.tunnel_name !== "string" ||
+			typeof data.account_id !== "string"
+		) {
+			throw new Error("Invalid project config");
+		}
+		return {
+			tunnel_id: data.tunnel_id,
+			tunnel_name: data.tunnel_name,
+			account_id: data.account_id,
+			routes: Array.isArray(data.routes)
+				? data.routes.map(parseRoute)
+				: [],
+		};
+	},
+};
+
+export const TunnelCredentialsSchema = {
+	parse(data: any): TunnelCredentials {
+		if (
+			!data ||
+			typeof data.AccountTag !== "string" ||
+			typeof data.TunnelSecret !== "string" ||
+			typeof data.TunnelID !== "string"
+		) {
+			throw new Error("Invalid tunnel credentials");
+		}
+		return {
+			AccountTag: data.AccountTag,
+			TunnelSecret: data.TunnelSecret,
+			TunnelID: data.TunnelID,
+		};
+	},
+};
+
+export const AuthTokenSchema = {
+	parse(data: any): AuthToken {
+		if (!data || typeof data.api_token !== "string") {
+			throw new Error("Invalid auth token");
+		}
+		return {
+			api_token: data.api_token,
+			refresh_token: data.refresh_token,
+			expires_at: data.expires_at,
+			email: data.email,
+			account_id: data.account_id,
+			account_name: data.account_name,
+		};
+	},
+};
+
+export const TunnelRegistryEntrySchema = {
+	parse(data: any): TunnelRegistryEntry {
+		if (
+			!data ||
+			typeof data.path !== "string" ||
+			typeof data.tunnel_id !== "string" ||
+			typeof data.tunnel_name !== "string"
+		) {
+			throw new Error("Invalid tunnel registry entry");
+		}
+		return {
+			path: data.path,
+			tunnel_id: data.tunnel_id,
+			tunnel_name: data.tunnel_name,
+			routes: Array.isArray(data.routes)
+				? data.routes.map(parseRoute)
+				: [],
+		};
+	},
+};
+
+export const TunnelRegistrySchema = {
+	parse(data: any): TunnelRegistry {
+		if (!data || !Array.isArray(data.tunnels)) {
+			throw new Error("Invalid tunnel registry");
+		}
+		return {
+			tunnels: data.tunnels.map(TunnelRegistryEntrySchema.parse),
+		};
+	},
+};
